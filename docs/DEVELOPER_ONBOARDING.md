@@ -5,7 +5,7 @@
 Before starting, ask a team administrator to:
 
 - add you to the Doppler team with access to the `realdealkickzsc` project and `dev` config;
-- give your GitHub account access to `rushinski/rdk-webstore`.
+- give your GitHub account access to `sneakereco/realdealkickzsc`.
 
 ## Prerequisites
 
@@ -84,8 +84,8 @@ Docker server.
 ## Start the application
 
 ```bash
-git clone https://github.com/rushinski/rdk-webstore.git
-cd rdk-webstore
+git clone https://github.com/sneakereco/realdealkickzsc.git
+cd realdealkickzsc
 npm install
 doppler login
 doppler setup
