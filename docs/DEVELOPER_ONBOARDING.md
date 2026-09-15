@@ -105,7 +105,7 @@ Run all three commands and fix any failures:
 ```bash
 npm run typecheck
 npm run lint
-npm run build
+doppler run -- npm run build
 ```
 
 Do not commit until all three commands pass.

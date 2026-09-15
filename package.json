@@ -9,7 +9,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev": "doppler run -- next dev",
-    "build": "doppler run -- next build",
+    "build": "next build",
     "start": "doppler run -- next start",
     "gen:types": "npx supabase gen types typescript --local --schema public > src/types/db/database.types.ts",
     "test:workflows": "node --test tests/workflows/ci-workflow.test.mjs tests/workflows/staging-workflow.test.mjs tests/workflows/production-workflow.test.mjs"

@@ -149,7 +149,7 @@ Create two Doppler Vercel syncs:
 
 Both syncs use Vercel Sensitive variables. Doppler remains the editing source of truth; Vercel receives managed copies because its build and serverless runtimes require environment variables.
 
-The workflows upload source for Vercel to build inside the target project. They do not use a local `vercel build --prebuilt` flow because Sensitive Vercel variables cannot be downloaded into the GitHub runner. The CLI is invoked as the exact ephemeral version `npx --yes vercel@59.16.0`, avoiding an application dependency solely for deployment tooling.
+The workflows build inside the credentialed GitHub Actions deploy job after Doppler injects the build variables. They run `vercel build --prod`, then upload `.vercel/output` with `vercel deploy --prebuilt --prod`; Vercel must not start a second remote build. The CLI is invoked as the exact ephemeral version `npx --yes vercel@59.16.0`, avoiding an application dependency solely for deployment tooling.
 
 Disconnect Vercel's Git auto-deployment from both projects before enabling the Actions workflows. Otherwise, a push to `main` can produce duplicate staging deployments or bypass the tag gate on the production project.
 

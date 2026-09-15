@@ -49,4 +49,4 @@ jobs:
         run: npm run typecheck
 
       - name: Build without deployment credentials
-        run: npx next build
+        run: npm run build

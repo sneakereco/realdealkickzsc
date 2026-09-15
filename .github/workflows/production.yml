@@ -103,11 +103,14 @@ jobs:
       - name: Pull Vercel project configuration
         run: npx --yes vercel@59.16.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
 
-      - name: Build and deploy production source
+      - name: Build production artifacts
+        run: npx --yes vercel@59.16.0 build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy production artifacts
         id: deploy
         shell: bash
         run: |
-          deployment_url="$(npx --yes vercel@59.16.0 deploy --prod --yes --token="$VERCEL_TOKEN")"
+          deployment_url="$(npx --yes vercel@59.16.0 deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN")"
           echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
 
   verify:
