@@ -4,26 +4,14 @@
 import { Suspense, useCallback, useState, useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
-import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { ChatDrawer } from "@/components/chat/ChatDrawer";
 import { ChatLauncher } from "@/components/chat/ChatLauncher";
 import { Footer } from "@/components/shell/Footer";
 import { MobileBottomNav } from "@/components/shell/MobileBottomNav";
-import type { ProfileRole } from "@/config/constants/roles";
 
-export function ClientShell({
-  children,
-  isAdmin = false,
-  userEmail = null,
-  role = null,
-}: {
-  children: React.ReactNode;
-  isAdmin?: boolean;
-  userEmail?: string | null;
-  role?: ProfileRole | null;
-}) {
+export function ClientShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -117,14 +105,9 @@ export function ClientShell({
     }
   }, [pathname]); // ✅ OPTIMIZATION: Removed searchParams - only track pathname changes
 
-  const showAdminSidebar = isAdmin && isStoreRoute && Boolean(role);
-
   return (
     <>
-      {showAdminSidebar && (
-        <AdminSidebar userEmail={userEmail} role={role as ProfileRole} />
-      )}
-      <div className={showAdminSidebar ? "md:ml-64" : undefined}>{children}</div>
+      {children}
 
       <SearchOverlay isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
       <CartDrawer isOpen={cartOpen} onClose={() => setCartOpen(false)} />

@@ -7,7 +7,7 @@ import { ensureTenantId } from "@/lib/auth/tenant";
 import { ProductService } from "@/services/product-service";
 import type { Category, Condition } from "@/types/domain/product";
 
-type StockStatus = "in_stock" | "archived";
+type StockStatus = "in_stock" | "out_of_stock" | "archived" | "all";
 
 interface InventoryFilters {
   q?: string;

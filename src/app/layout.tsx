@@ -7,7 +7,6 @@ import { ScrollHeader } from "@/components/shell/ScrollHeader";
 import { ClientShell } from "@/components/shell/ClientShell";
 import { SessionProvider } from "@/contexts/SessionContext";
 import { getServerSession } from "@/lib/auth/session";
-import { isAdminRole } from "@/config/constants/roles";
 import "@/styles/global.css";
 
 export const metadata: Metadata = {
@@ -35,8 +34,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const isAuthenticated = Boolean(session);
 
   const role = session?.role ?? null;
-  const isAdmin = role ? isAdminRole(role) : false;
-
   const userEmail = session?.user.email ?? session?.profile?.email;
   const userId = session?.user.id ?? null;
 
@@ -53,7 +50,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="bg-black text-white">
         <SessionProvider initialUser={sessionUser} initialRole={role}>
           <CartProvider userId={userId}>
-            <ClientShell isAdmin={isAdmin} userEmail={userEmail} role={role}>
+            <ClientShell>
               <ScrollHeader
                 isAuthenticated={isAuthenticated}
                 userEmail={userEmail}
