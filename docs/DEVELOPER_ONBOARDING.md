@@ -67,6 +67,7 @@ Run every applicable checked-in test plus the common gates:
 npm run format:check
 npm run lint
 npm run typecheck
+npm run test:unit
 npm run test:catalog-only
 npm run test:admin-readonly
 npm run test:lightspeed

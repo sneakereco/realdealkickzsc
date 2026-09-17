@@ -1,13 +1,13 @@
 // src/components/shell/ClientShell.tsx
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useState, useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
+import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { ChatDrawer } from "@/components/chat/ChatDrawer";
 import { ChatLauncher } from "@/components/chat/ChatLauncher";
-import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { Footer } from "@/components/shell/Footer";
 import { MobileBottomNav } from "@/components/shell/MobileBottomNav";
 
@@ -22,9 +22,11 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
     const handleOpenSearch = () => setSearchOpen(true);
     const handleOpenCart = () => setCartOpen(true);
     const handleOpenChat = () => setChatOpen(true);
+
     window.addEventListener("openSearch", handleOpenSearch);
     window.addEventListener("openCart", handleOpenCart);
     window.addEventListener("openChat", handleOpenChat);
+
     return () => {
       window.removeEventListener("openSearch", handleOpenSearch);
       window.removeEventListener("openCart", handleOpenCart);
@@ -35,7 +37,8 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const isAdminRoute = pathname.startsWith("/admin");
     const isAuthRoute = pathname.startsWith("/auth");
-    document.body.dataset.route = isAdminRoute ? "admin" : isAuthRoute ? "auth" : "store";
+    const routeValue = isAdminRoute ? "admin" : isAuthRoute ? "auth" : "store";
+    document.body.dataset.route = routeValue;
   }, [pathname]);
 
   const isAdminRoute = pathname.startsWith("/admin");
@@ -48,6 +51,7 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       {children}
+
       <SearchOverlay isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
       <CartDrawer isOpen={cartOpen} onClose={() => setCartOpen(false)} />
       <Suspense fallback={null}>
@@ -65,8 +69,12 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
 
 function ChatQueryOpener({ onOpenChat }: { onOpenChat: () => void }) {
   const searchParams = useSearchParams();
+
   useEffect(() => {
-    if (searchParams.get("chat") === "1") onOpenChat();
+    if (searchParams.get("chat") === "1") {
+      onOpenChat();
+    }
   }, [onOpenChat, searchParams]);
+
   return null;
 }

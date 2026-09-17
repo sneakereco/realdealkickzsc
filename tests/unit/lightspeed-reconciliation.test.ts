@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import test from "node:test";
+import { test } from "vitest";
 
 import {
   normalizeLightspeedFamily,
   reconcileCatalog,
   type CatalogReconciliationStore,
   type ReconciliationSummary,
-} from "../src/lib/lightspeed/reconciliation";
+} from "@/lib/lightspeed/reconciliation";
 
 const fixturePath = new URL(
-  "./fixtures/lightspeed/manual-reconciliation.json",
+  "../fixtures/lightspeed/manual-reconciliation.json",
   import.meta.url,
 );
 
