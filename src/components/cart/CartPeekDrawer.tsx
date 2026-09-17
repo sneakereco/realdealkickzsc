@@ -4,6 +4,7 @@
 import { X, Maximize2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import { InstagramPurchaseNotice } from "@/components/purchase/InstagramPurchaseNotice";
 import { useCart } from "./CartProvider";
 
 interface CartPeekDrawerProps {
@@ -57,9 +58,7 @@ export function CartPeekDrawer({ isOpen, onClose }: CartPeekDrawerProps) {
                   View Full Cart
                 </button>
 
-                <button className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 sm:py-3 rounded transition text-sm sm:text-base">
-                  Checkout
-                </button>
+                <InstagramPurchaseNotice />
               </div>
             </>
           )}

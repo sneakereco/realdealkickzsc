@@ -5,7 +5,7 @@ export default function HoursPage() {
       <h1 className="text-4xl font-bold text-white mb-4">Hours</h1>
       <p className="text-zinc-400 mb-4">
         Pickup and meetup available in Simpsonville, South Carolina. Local pickups are
-        available and you can select local pickup at checkout.
+        available by arrangement when you message us on Instagram.
       </p>
       <p className="text-zinc-400 mb-10">
         We are always looking to buy sneakers no matter the condition and no matter the

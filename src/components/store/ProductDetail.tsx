@@ -8,6 +8,7 @@ import { ChevronDown } from "lucide-react";
 
 import type { ProductWithDetails } from "@/types/domain/product";
 import { useCart } from "@/components/cart/CartProvider";
+import { InstagramPurchaseNotice } from "@/components/purchase/InstagramPurchaseNotice";
 import { Toast } from "@/components/ui/Toast";
 import { RdkSelect, type RdkSelectOption } from "@/components/ui/Select";
 
@@ -223,6 +224,10 @@ export function ProductDetail({ product }: ProductDetailProps) {
                 : "Add to Cart"}
           </button>
 
+          <div className="mb-6">
+            <InstagramPurchaseNotice />
+          </div>
+
           {inCartQuantity > 0 && (
             <p className="text-xs text-gray-500 mb-6">
               This size is already in your cart.
@@ -255,8 +260,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
             {showShipping && (
               <div className="text-gray-400 text-sm space-y-2">
                 <p>
-                  We aim to ship within 24 hours (processing time, not delivery time).
-                  Shipping options and rates are shown at checkout.
+                  Arrange shipping or local pickup directly with us when you purchase
+                  through Instagram.
                 </p>
                 <p>
                   All sales are final except as outlined in our Returns &amp; Refunds
