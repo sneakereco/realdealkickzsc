@@ -13,9 +13,10 @@ export default function PrivacyPage() {
           <p>
             This Privacy Policy describes how Realdealkickzsc (&quot;we,&quot;
             &quot;us,&quot; or &quot;our&quot;) collects, uses, and discloses personal
-            information when you visit, use our services, create an account, or make a
-            purchase through realdealkickzsc.com (the &quot;Site&quot;) or otherwise
-            interact with us (collectively, the &quot;Services&quot;).
+            information when you visit, use our services, create an account, or arrange a
+            purchase after browsing realdealkickzsc.com (the &quot;Site&quot;) or
+            otherwise interact with us (collectively, the &quot;Services&quot;). The Site
+            does not accept payments.
           </p>
 
           <section>
@@ -28,8 +29,8 @@ export default function PrivacyPage() {
             <p>We may collect information you provide directly, including:</p>
             <ul className="list-disc pl-6 mt-2 space-y-1">
               <li>
-                Contact information (name, email address, phone number, shipping/billing
-                information)
+                Contact information (name, email address, phone number, and shipping
+                information you provide directly to us)
               </li>
               <li>
                 Order information (items purchased, order details, transaction history)
@@ -60,8 +61,8 @@ export default function PrivacyPage() {
               C) Information From Service Providers
             </h3>
             <p>
-              We may receive information from service providers that help operate the
-              Services, such as payment processors and shipping providers.
+              We may receive information from service providers used for purchases
+              arranged outside the Site, such as payment or shipping providers.
             </p>
           </section>
 
@@ -111,7 +112,7 @@ export default function PrivacyPage() {
             </h2>
             <p>We may share personal information with:</p>
             <ul className="list-disc pl-6 mt-2 space-y-1">
-              <li>payment processors to complete transactions</li>
+              <li>payment processors used for transactions arranged outside the Site</li>
               <li>shipping and fulfillment providers to deliver orders</li>
               <li>
                 hosting, security, and IT providers to maintain and protect the Services
