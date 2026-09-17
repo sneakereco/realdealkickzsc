@@ -12,7 +12,8 @@
     "build": "next build",
     "start": "doppler run -- next start",
     "gen:types": "npx supabase gen types typescript --local --schema public > src/types/db/database.types.ts",
-    "test:workflows": "node --test tests/workflows/ci-workflow.test.mjs tests/workflows/staging-workflow.test.mjs tests/workflows/production-workflow.test.mjs"
+    "test:workflows": "node --test tests/workflows/ci-workflow.test.mjs tests/workflows/staging-workflow.test.mjs tests/workflows/production-workflow.test.mjs",
+    "test:search": "tsx --test tests/search/product-search.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
