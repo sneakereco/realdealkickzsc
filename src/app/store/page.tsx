@@ -7,9 +7,9 @@ import { FilterPanel } from "@/components/store/FilterPanel";
 import { ProductGrid } from "@/components/store/ProductGrid";
 import { StoreControls } from "@/components/store/StoreControls";
 import { createSupabasePublicClient } from "@/lib/supabase/public";
-import { StorefrontService } from "@/services/storefront-service";
+import { StorefrontService } from "@/modules/catalog/storefront";
 import { storeProductsQuerySchema } from "@/lib/validation/storefront";
-import type { ProductFilters } from "@/repositories/product-repo";
+import type { ProductFilters } from "@/modules/catalog/product-repository";
 
 // OPTIMIZATION: Enable ISR with longer revalidation
 export const revalidate = 60; // Revalidate every 60 seconds

@@ -27,6 +27,23 @@ Lightspeed family, product, and SKU identifiers map to existing rows. Missing re
 are retired only after a complete provider scan; a provider scan failure performs no mutation or
 retirement.
 
+## Capability boundaries
+
+Next.js entrypoints live only in `src/app/**` and `src/proxy.ts`. They translate HTTP or page
+requests and call the narrow capability entrypoint that owns the behavior:
+
+| Capability           | Owner                    | Route-facing entrypoints                                       |
+| -------------------- | ------------------------ | -------------------------------------------------------------- |
+| Storefront catalog   | `src/modules/catalog`    | `storefront.ts`, `product-repository.ts`                       |
+| Lightspeed sync      | `src/modules/lightspeed` | `reconciliation.ts`, `server.ts`, `webhook-server.ts`          |
+| Admin auth/dashboard | `src/modules/admin`      | `auth.ts`, `AdminSidebar.tsx`, `AdminTopbar.tsx`               |
+| Analytics            | `src/modules/analytics`  | `index.tsx`                                                    |
+| Shared platform      | `src/lib`, `src/config`  | Supabase clients, environment validation, logging, HTTP policy |
+
+Capability modules may use shared platform code. Route files must not reach through a module to
+its former `components`, `services`, `repositories`, or `lib` location. Existing URLs and proxy
+behavior remain owned by the Next.js entrypoints.
+
 ## Route and API surface
 
 | Surface                                        | Purpose                                                          |

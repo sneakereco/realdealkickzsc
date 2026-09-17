@@ -7,7 +7,7 @@ import {
   isLightspeedEventOutOfOrder,
   parseLightspeedWebhook,
   verifyLightspeedSignature,
-} from "../src/lib/lightspeed/webhooks";
+} from "../src/modules/lightspeed/webhooks";
 
 const fixtures = ["product-update", "inventory-update", "sale-update"];
 

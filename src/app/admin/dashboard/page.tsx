@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Package } from "lucide-react";
 
-import { LightspeedReconciliationCard } from "@/components/admin/LightspeedReconciliationCard";
+import { LightspeedReconciliationCard } from "@/modules/lightspeed/LightspeedReconciliationCard";
 import { logError } from "@/lib/utils/log";
 
 export default function DashboardPage() {

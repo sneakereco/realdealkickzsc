@@ -1,8 +1,8 @@
 // src/services/storefront-service.ts
 import type { TypedSupabaseClient } from "@/lib/supabase/server";
 import { expandShoeSizeSelection } from "@/config/constants/sizes";
-import { CatalogRepository } from "@/repositories/catalog-repo";
-import { ProductRepository, type ProductFilters } from "@/repositories/product-repo";
+import { CatalogRepository } from "./catalog-repository";
+import { ProductRepository, type ProductFilters } from "./product-repository";
 
 export class StorefrontService {
   private productRepo: ProductRepository;

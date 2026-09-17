@@ -23,7 +23,7 @@ async function sourceFiles(directory) {
 void test("root layout installs exactly one deployment-gated Cloudflare beacon", async () => {
   const layout = await readFile(path.join(root, "src/app/layout.tsx"), "utf8");
   const beacon = await readFile(
-    path.join(root, "src/components/analytics/CloudflareWebAnalytics.tsx"),
+    path.join(root, "src/modules/analytics/index.tsx"),
     "utf8",
   );
 

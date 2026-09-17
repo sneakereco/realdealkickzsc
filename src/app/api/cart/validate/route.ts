@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { ProductRepository } from "@/repositories/product-repo";
+import { ProductRepository } from "@/modules/catalog/product-repository";
 import { cartValidateSchema } from "@/lib/validation/cart";
 import { getRequestIdFromHeaders } from "@/lib/http/request-id";
 import { logError } from "@/lib/utils/log";

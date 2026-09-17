@@ -1,7 +1,7 @@
 // app/admin/layout.tsx
 import { requireAdmin } from "@/lib/auth/session";
-import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { AdminTopbar } from "@/components/admin/AdminTopbar";
+import { AdminSidebar } from "@/modules/admin/AdminSidebar";
+import { AdminTopbar } from "@/modules/admin/AdminTopbar";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   await requireAdmin();

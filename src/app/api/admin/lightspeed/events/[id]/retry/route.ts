@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { AuthError, requireAdminApi } from "@/lib/auth/session";
-import { processLightspeedWebhookEvent } from "@/lib/lightspeed/webhook-server";
+import { processLightspeedWebhookEvent } from "@/modules/lightspeed/webhook-server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { logError } from "@/lib/utils/log";
 

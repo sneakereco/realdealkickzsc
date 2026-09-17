@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getServerSession } from "@/lib/auth/session";
-import { StorefrontService } from "@/services/storefront-service";
+import { StorefrontService } from "@/modules/catalog/storefront";
 import { getRequestIdFromHeaders } from "@/lib/http/request-id";
 import { logError } from "@/lib/utils/log";
 

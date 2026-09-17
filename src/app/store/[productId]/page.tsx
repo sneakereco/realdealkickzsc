@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { createSupabasePublicClient } from "@/lib/supabase/public";
-import { ProductRepository } from "@/repositories/product-repo";
+import { ProductRepository } from "@/modules/catalog/product-repository";
 import { ProductDetail } from "@/components/store/ProductDetail";
 import { BackToStoreLink } from "@/components/store/BackToStoreLink";
 

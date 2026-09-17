@@ -7,7 +7,7 @@ import {
   reconcileCatalog,
   type CatalogReconciliationStore,
   type ReconciliationSummary,
-} from "@/lib/lightspeed/reconciliation";
+} from "@/modules/lightspeed/reconciliation";
 
 const fixturePath = new URL(
   "../fixtures/lightspeed/manual-reconciliation.json",
