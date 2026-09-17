@@ -13,10 +13,10 @@ export default function PrivacyPage() {
           <p>
             This Privacy Policy describes how Realdealkickzsc (&quot;we,&quot;
             &quot;us,&quot; or &quot;our&quot;) collects, uses, and discloses personal
-            information when you visit, use our services, create an account, or make a
-            arrange a purchase after browsing realdealkickzsc.com (the &quot;Site&quot;)
-            or otherwise interact with us (collectively, the &quot;Services&quot;). The
-            Site does not accept payments.
+            information when you visit, use our services, create an account, or arrange a
+            purchase after browsing realdealkickzsc.com (the &quot;Site&quot;) or
+            otherwise interact with us (collectively, the &quot;Services&quot;). The Site
+            does not accept payments.
           </p>
 
           <section>
