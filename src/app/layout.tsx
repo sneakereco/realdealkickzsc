@@ -3,6 +3,7 @@
 import type { Metadata, Viewport } from "next";
 
 import { CartProvider } from "@/components/cart/CartProvider";
+import { CloudflareWebAnalytics } from "@/components/analytics/CloudflareWebAnalytics";
 import { ScrollHeader } from "@/components/shell/ScrollHeader";
 import { ClientShell } from "@/components/shell/ClientShell";
 import { SessionProvider } from "@/contexts/SessionContext";
@@ -63,6 +64,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </ClientShell>
           </CartProvider>
         </SessionProvider>
+        <CloudflareWebAnalytics />
       </body>
     </html>
   );

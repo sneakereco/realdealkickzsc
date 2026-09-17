@@ -15,6 +15,9 @@ const schema = z.object({
 
   LIGHTSPEED_ACCESS_TOKEN: z.string().min(1),
   LIGHTSPEED_DOMAIN_PREFIX: z.string().min(1),
+
+  CLOUDFLARE_WEB_ANALYTICS_ENABLED: z.enum(["true", "false"]).default("false"),
+  CLOUDFLARE_WEB_ANALYTICS_TOKEN: z.string().trim().min(1).optional(),
 });
 
 export const env = schema.parse(process.env);

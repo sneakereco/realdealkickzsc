@@ -2332,36 +2332,6 @@ export type Database = {
           },
         ];
       };
-      site_pageviews: {
-        Row: {
-          created_at: string;
-          id: string;
-          path: string;
-          referrer: string | null;
-          session_id: string;
-          user_id: string | null;
-          visitor_id: string;
-        };
-        Insert: {
-          created_at?: string;
-          id?: string;
-          path: string;
-          referrer?: string | null;
-          session_id: string;
-          user_id?: string | null;
-          visitor_id: string;
-        };
-        Update: {
-          created_at?: string;
-          id?: string;
-          path?: string;
-          referrer?: string | null;
-          session_id?: string;
-          user_id?: string | null;
-          visitor_id?: string;
-        };
-        Relationships: [];
-      };
       state_sales_tracking: {
         Row: {
           created_at: string;

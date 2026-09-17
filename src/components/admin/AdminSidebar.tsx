@@ -9,7 +9,6 @@ import {
   Bell,
   LayoutDashboard,
   Package,
-  BarChart3,
   Settings,
   MessageCircle,
   Globe,
@@ -40,7 +39,7 @@ type NavGroupItem = {
   type: "group";
   label: string;
   icon: LucideIcon;
-  groupKey: "analytics" | "settings";
+  groupKey: "settings";
   isActive: (pathname: string) => boolean;
   children: Array<{ href: string; label: string }>;
 };
@@ -54,14 +53,6 @@ const navItems: Array<NavLinkItem | NavGroupItem> = [
   { type: "link", href: "/", label: "Website", icon: Globe },
   { type: "link", href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { type: "link", href: "/admin/inventory", label: "Inventory", icon: Package },
-  {
-    type: "group",
-    label: "Analytics",
-    icon: BarChart3,
-    groupKey: "analytics",
-    isActive: (pathname: string) => pathname.startsWith("/admin/analytics"),
-    children: [{ href: "/admin/analytics/traffic", label: "Traffic" }],
-  },
   { type: "link", href: "/admin/customers", label: "Customers", icon: User },
   { type: "link", href: "/admin/bank", label: "Bank", icon: Landmark },
   { type: "link", href: "/admin/nexus", label: "Tax & Nexus", icon: Receipt },
@@ -95,7 +86,6 @@ export function AdminSidebar({
   const pathname = usePathname();
 
   const [openGroups, setOpenGroups] = useState({
-    analytics: false,
     settings: false,
   });
 
