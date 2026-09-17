@@ -8,8 +8,8 @@ export default function RefundsPage() {
         <div className="text-zinc-400 space-y-6">
           <p className="text-sm">Last updated: December 30, 2025</p>
           <p>
-            This Return &amp; Refund Policy applies to purchases made through{" "}
-            realdealkickzsc.com.
+            This Return &amp; Refund Policy applies to purchases arranged directly with us
+            after browsing realdealkickzsc.com.
           </p>
 
           <section>
@@ -106,7 +106,7 @@ export default function RefundsPage() {
             </h2>
             <p>
               You are responsible for providing a complete and accurate shipping address
-              at checkout. If an order is returned due to an incorrect or incomplete
+              directly to us. If an order is returned due to an incorrect or incomplete
               address, additional shipping costs may apply to reship.
             </p>
           </section>
