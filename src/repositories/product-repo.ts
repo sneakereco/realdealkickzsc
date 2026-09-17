@@ -1,5 +1,6 @@
 //  src/repositories/product-repo.ts
 import type { TypedSupabaseClient } from "@/lib/supabase/server";
+import { buildSearchTerms, rankSearchCandidates } from "@/lib/search/product-search";
 import type { Tables, TablesInsert, TablesUpdate } from "@/types/db/database.types";
 
 export interface ProductFilters {
@@ -299,6 +300,8 @@ export class ProductRepository {
       searchMode === "inventory"
         ? this.inventorySearchFields
         : this.storefrontSearchFields;
+    const matchingSkus =
+      searchMode === "storefront" ? await this.listMatchingSkus(filters.q) : new Map();
 
     const sizeProductIds = isPriceSort
       ? null
@@ -324,6 +327,7 @@ export class ProductRepository {
         includeOutOfStock,
         includeUnpublished,
         nowIso,
+        [...matchingSkus.keys()],
       );
       ids = result.ids;
       total = result.total;
@@ -358,7 +362,11 @@ export class ProductRepository {
       }
 
       // Text search
-      baseQuery = this.applyTextSearch(baseQuery, filters.q, searchFields);
+      baseQuery = this.applyTextSearch(baseQuery, filters.q, searchFields, {
+        extraClauses: matchingSkus.size
+          ? [`id.in.(${this.buildInClause([...matchingSkus.keys()])})`]
+          : [],
+      });
 
       // Category / brand / condition filters
       if (filters.category?.length) {
@@ -404,9 +412,8 @@ export class ProductRepository {
         }
         query = query.range(offset, offset + limit - 1);
       } else {
-        // For searches, fetch more results to score and rank them
-        // Fetch up to 500 results to ensure good ranking
-        const fetchLimit = 500;
+        // Rank a production-like catalog in one pass so every page shares one stable order.
+        const fetchLimit = 5000;
         query = query.order("created_at", { ascending: false }).range(0, fetchLimit - 1);
       }
 
@@ -439,15 +446,15 @@ export class ProductRepository {
       if (!hasSearchQuery) {
         ids = candidateRows.map((row) => row.id);
       } else {
-        const candidatesWithScores = candidateRows.map((row) => ({
-          row,
-          score: this.calculateSearchRelevance(row, filters.q, searchFields),
-        }));
-
-        candidatesWithScores.sort((a, b) => b.score - a.score);
-        ids = candidatesWithScores
+        ids = rankSearchCandidates(
+          candidateRows.map((row) => ({
+            ...row,
+            skus: matchingSkus.get(row.id) ?? [],
+          })),
+          filters.q,
+        )
           .slice(offset, offset + limit)
-          .map((candidate) => candidate.row.id);
+          .map((candidate) => candidate.id);
       }
     }
     if (ids.length === 0) {
@@ -1341,14 +1348,19 @@ export class ProductRepository {
     query: Query,
     input: string | undefined,
     fields: string[],
-    opts?: { foreignTable?: string; referencedTable?: string },
+    opts?: {
+      foreignTable?: string;
+      referencedTable?: string;
+      extraClauses?: string[];
+    },
   ): Query {
-    const terms = this.buildSearchTerms(input);
+    const terms = buildSearchTerms(input);
     if (terms.length === 0) {
       return query;
     }
 
-    const clauses: string[] = [];
+    const { extraClauses = [], ...orOptions } = opts ?? {};
+    const clauses: string[] = [...extraClauses];
     for (const term of terms) {
       const safe = term.replace(/[(),]/g, " ").replace(/\s+/g, " ").trim();
       if (!safe) {
@@ -1363,140 +1375,31 @@ export class ProductRepository {
       return query;
     }
 
-    return query.or(clauses.join(","), opts) as Query;
-  }
-
-  private buildSearchTerms(input?: string): string[] {
-    if (!input) {
-      return [];
-    }
-
-    const normalized = input.trim().toLowerCase();
-    if (!normalized) {
-      return [];
-    }
-
-    const terms = new Set<string>();
-    const addTerm = (value: string) => {
-      const next = value.trim();
-      if (next.length >= 2) {
-        terms.add(next);
-      }
-    };
-
-    addTerm(normalized);
-
-    const tokens = normalized.split(/\s+/);
-    for (const token of tokens) {
-      const cleaned = token.replace(/[^a-z0-9]/g, "");
-      if (!cleaned) {
-        continue;
-      }
-
-      addTerm(cleaned);
-
-      if (cleaned.endsWith("ies") && cleaned.length > 4) {
-        addTerm(`${cleaned.slice(0, -3)}y`);
-      } else if (cleaned.endsWith("es") && cleaned.length > 4) {
-        addTerm(cleaned.slice(0, -2));
-      } else if (cleaned.endsWith("s") && cleaned.length > 3) {
-        addTerm(cleaned.slice(0, -1));
-      }
-    }
-
-    return Array.from(terms).slice(0, 8);
+    return query.or(clauses.join(","), orOptions) as Query;
   }
 
   private buildInClause(values: string[]) {
     return values.map((value) => `"${value.replace(/"/g, '\\"')}"`).join(",");
   }
 
-  /**
-   * Calculate a relevance score for a product based on search terms.
-   * Higher scores indicate better matches.
-   */
-  private calculateSearchRelevance(
-    product: Pick<ProductRow, "brand" | "name" | "model"> | SearchCandidateRow,
-    searchQuery: string | undefined,
-    searchFields: string[],
-  ): number {
-    if (!searchQuery?.trim()) {
-      return 0;
+  private async listMatchingSkus(input?: string): Promise<Map<string, string[]>> {
+    const terms = buildSearchTerms(input);
+    if (!terms.length) return new Map();
+
+    const clauses = terms.map((term) => `sku.ilike.%${term}%`);
+    const { data, error } = await this.supabase
+      .from("product_variants")
+      .select("product_id, sku")
+      .or(clauses.join(","))
+      .limit(5000);
+    if (error) throw error;
+
+    const matches = new Map<string, string[]>();
+    for (const row of data ?? []) {
+      if (!row.product_id || !row.sku) continue;
+      matches.set(row.product_id, [...(matches.get(row.product_id) ?? []), row.sku]);
     }
-
-    const query = searchQuery.trim().toLowerCase();
-    const terms = this.buildSearchTerms(searchQuery);
-
-    // Filter out the full phrase from individual terms to avoid double-counting
-    const individualTerms = terms.filter((term) => term !== query);
-
-    let score = 0;
-
-    // Helper to get field values
-    const getFieldValue = (field: string): string => {
-      const value = product[field as keyof typeof product];
-      return String(value ?? "").toLowerCase();
-    };
-
-    // Check each search field
-    for (const field of searchFields) {
-      const fieldValue = getFieldValue(field);
-      if (!fieldValue) {
-        continue;
-      }
-
-      // Exact match bonus (highest priority)
-      if (fieldValue === query) {
-        score += 1000;
-        continue; // Skip other checks for exact matches
-      }
-
-      // Starts with query bonus
-      if (fieldValue.startsWith(query)) {
-        score += 500;
-      }
-
-      // Contains full query bonus (exact phrase)
-      if (fieldValue.includes(query)) {
-        score += 300;
-      }
-
-      // Count matching individual terms (excluding the full phrase)
-      let matchingTerms = 0;
-      for (const term of individualTerms) {
-        if (fieldValue.includes(term)) {
-          matchingTerms++;
-        }
-      }
-
-      // Strong bonus for matching ALL individual terms (even if not exact phrase)
-      if (individualTerms.length > 0 && matchingTerms === individualTerms.length) {
-        score += 200;
-      }
-
-      // Bonus for each matching term (more important now)
-      score += matchingTerms * 25;
-
-      // Check for terms appearing in sequence (even with words between)
-      if (individualTerms.length > 1) {
-        let sequenceBonus = 0;
-        for (let i = 0; i < individualTerms.length - 1; i++) {
-          const term1Idx = fieldValue.indexOf(individualTerms[i]);
-          const term2Idx = fieldValue.indexOf(individualTerms[i + 1]);
-          if (term1Idx !== -1 && term2Idx > term1Idx) {
-            sequenceBonus += 15;
-          }
-        }
-        score += sequenceBonus;
-      }
-
-      // Product name is the raw title and primary inventory search field.
-      if (field === "name") {
-        score *= 1.5;
-      }
-    }
-
-    return score;
+    return matches;
   }
 
   private async listProductIdsByPrice(
@@ -1505,6 +1408,7 @@ export class ProductRepository {
     includeOutOfStock: boolean,
     includeUnpublished: boolean,
     nowIso: string,
+    matchingSkuProductIds: string[],
   ) {
     const { page = 1, limit = 20 } = filters;
     const offset = (page - 1) * limit;
@@ -1543,7 +1447,16 @@ export class ProductRepository {
     }
 
     // Text search
-    countQuery = this.applyTextSearch(countQuery, filters.q, this.storefrontSearchFields);
+    countQuery = this.applyTextSearch(
+      countQuery,
+      filters.q,
+      this.storefrontSearchFields,
+      {
+        extraClauses: matchingSkuProductIds.length
+          ? [`id.in.(${this.buildInClause(matchingSkuProductIds)})`]
+          : [],
+      },
+    );
 
     // Category / brand / condition filters
     if (filters.category?.length) {
@@ -1613,6 +1526,9 @@ export class ProductRepository {
       // Text search on product fields
       query = this.applyTextSearch(query, filters.q, this.storefrontSearchFields, {
         foreignTable: "product",
+        extraClauses: matchingSkuProductIds.length
+          ? [`id.in.(${this.buildInClause(matchingSkuProductIds)})`]
+          : [],
       });
 
       // Category / brand / condition filters
