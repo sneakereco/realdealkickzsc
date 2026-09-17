@@ -2,20 +2,15 @@
 
 "use client";
 
-import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { Minus, Plus, Trash2, ShoppingCart } from "lucide-react";
 
 import { useCart } from "@/components/cart/CartProvider";
+import { InstagramPurchaseNotice } from "@/components/purchase/InstagramPurchaseNotice";
 
 export default function CartPage() {
-  const router = useRouter();
   const { items, removeItem, updateQuantity, total } = useCart();
-
-  const handleCheckout = () => {
-    router.push("/checkout");
-  };
 
   if (items.length === 0) {
     return (
@@ -124,7 +119,7 @@ export default function CartPage() {
         <div className="lg:col-span-1">
           <div className="bg-zinc-900 border border-zinc-800/70 rounded p-5 sm:p-6 lg:sticky lg:top-20">
             <h2 className="text-lg sm:text-xl font-bold text-white mb-5 sm:mb-6">
-              Order Summary
+              Cart Summary
             </h2>
 
             <div className="space-y-3 mb-6 text-sm sm:text-base">
@@ -132,28 +127,17 @@ export default function CartPage() {
                 <span>Subtotal</span>
                 <span>${(total / 100).toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-400">
-                <span>Shipping</span>
-                <span>Unavailable</span>
-              </div>
-              <div className="flex justify-between text-gray-400">
-                <span>Tax</span>
-                <span>Unavailable</span>
-              </div>
               <div className="border-t border-zinc-800/70 pt-3">
                 <div className="flex justify-between text-lg sm:text-xl font-bold text-white">
-                  <span>Total</span>
-                  <span>${(total / 100).toFixed(2)}+</span>
+                  <span>Cart subtotal</span>
+                  <span>${(total / 100).toFixed(2)}</span>
                 </div>
               </div>
             </div>
 
-            <button
-              onClick={handleCheckout}
-              className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 sm:py-3 rounded transition mb-3 text-sm sm:text-base"
-            >
-              Checkout unavailable
-            </button>
+            <div className="mb-3">
+              <InstagramPurchaseNotice />
+            </div>
 
             <Link
               href="/store"
