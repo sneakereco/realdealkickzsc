@@ -114,7 +114,7 @@ type LinkRow = Tables<"lightspeed_product_links">;
 export class SupabaseCatalogReconciliationStore implements CatalogReconciliationStore {
   constructor(private readonly supabase: TypedSupabaseClient) {}
 
-  async startRun(tenantId: string, userId: string): Promise<string> {
+  async startRun(tenantId: string, userId: string | null): Promise<string> {
     const { data, error } = await this.supabase
       .from("lightspeed_sync_runs")
       .insert({
