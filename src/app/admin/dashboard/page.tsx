@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Eye, Package, UserRound, Users } from "lucide-react";
+import { Eye, Package, Users } from "lucide-react";
 
 import { TrafficChart } from "@/components/admin/charts/TrafficChart";
 import { logError } from "@/lib/utils/log";
@@ -16,21 +16,16 @@ export default function DashboardPage() {
   const [trafficTrend, setTrafficTrend] = useState<
     Array<{ date: string; visits: number }>
   >([]);
-  const [customerCount, setCustomerCount] = useState(0);
-
   useEffect(() => {
     const loadDashboard = async () => {
       try {
-        const [analyticsResponse, productsResponse, customersResponse] =
-          await Promise.all([
-            fetch("/api/admin/analytics?range=7d"),
-            fetch("/api/store/products?limit=1"),
-            fetch("/api/admin/customers"),
-          ]);
+        const [analyticsResponse, productsResponse] = await Promise.all([
+          fetch("/api/admin/analytics?range=7d"),
+          fetch("/api/store/products?limit=1"),
+        ]);
 
         const analyticsData = await analyticsResponse.json();
         const productsData = await productsResponse.json();
-        const customersData = await customersResponse.json();
 
         if (analyticsResponse.ok) {
           setTrafficSummary(
@@ -43,7 +38,6 @@ export default function DashboardPage() {
           setTrafficTrend(analyticsData.trafficTrend ?? []);
         }
         setProductsCount(productsData.total ?? 0);
-        setCustomerCount(customersData.customers?.length ?? 0);
       } catch (error) {
         logError(error, { layer: "frontend", event: "admin_load_dashboard" });
       }
@@ -54,7 +48,6 @@ export default function DashboardPage() {
 
   const stats = [
     { title: "Products", value: productsCount, icon: Package },
-    { title: "Customers", value: customerCount, icon: UserRound },
     { title: "Visitors", value: trafficSummary.uniqueVisitors, icon: Users },
     { title: "Page views", value: trafficSummary.pageViews, icon: Eye },
   ];
@@ -66,7 +59,7 @@ export default function DashboardPage() {
         <p className="text-gray-400">Catalog and storefront activity</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3">
         {stats.map(({ title, value, icon: Icon }) => (
           <div key={title} className="rounded border border-zinc-800/70 bg-zinc-900 p-6">
             <div className="mb-4 flex items-center justify-between">
