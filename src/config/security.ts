@@ -5,6 +5,7 @@ const prodConnectSrc = [
   "'self'",
   "https://*.supabase.co",
   "wss://*.supabase.co",
+  "https://cloudflareinsights.com",
 
   // ✅ only when explicitly enabled (for local prod-mode testing)
   ...(allowLocalSupabaseInProd
@@ -127,7 +128,7 @@ export const security = {
           "default-src 'self'",
           "img-src 'self' data: blob: https://*.supabase.co https://*.openstreetmap.org https://*.cloudfront.net https://*.fastly.net",
           "style-src 'self' 'unsafe-inline'",
-          "script-src 'self' 'unsafe-inline'",
+          "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com/beacon.min.js",
           "worker-src 'self' blob:",
           "object-src 'none'",
           "base-uri 'self'",

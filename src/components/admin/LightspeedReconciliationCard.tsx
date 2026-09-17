@@ -18,16 +18,30 @@ interface Run {
   completed_at: string | null;
 }
 
+interface WebhookEvent {
+  id: string;
+  event_id: string;
+  topic: string;
+  state: string;
+  attempts: number;
+  last_error: string | null;
+}
+
 export function LightspeedReconciliationCard() {
   const [run, setRun] = useState<Run | null>(null);
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState("");
+  const [latestEvent, setLatestEvent] = useState<WebhookEvent | null>(null);
 
   useEffect(() => {
     void fetch("/api/admin/lightspeed/reconcile")
       .then((response) => response.json())
       .then((payload) => setRun(payload.run ?? null))
       .catch(() => setMessage("Could not load the latest sync status."));
+    void fetch("/api/admin/lightspeed/events")
+      .then((response) => response.json())
+      .then((payload) => setLatestEvent(payload.events?.[0] ?? null))
+      .catch(() => undefined);
   }, []);
 
   async function startSync() {
@@ -55,6 +69,22 @@ export function LightspeedReconciliationCard() {
     } finally {
       setRunning(false);
     }
+  }
+
+  async function retryEvent() {
+    if (!latestEvent) return;
+    setMessage("Retrying webhook event…");
+    const response = await fetch(
+      `/api/admin/lightspeed/events/${encodeURIComponent(latestEvent.id)}/retry`,
+      { method: "POST" },
+    );
+    const payload = await response.json();
+    if (!response.ok) {
+      setMessage(payload.error ?? "Webhook retry failed");
+      return;
+    }
+    setLatestEvent(payload.event);
+    setMessage(`Webhook retry ${payload.event.state.replaceAll("_", " ")}.`);
   }
 
   const counts = run?.summary;
@@ -104,6 +134,24 @@ export function LightspeedReconciliationCard() {
         {message ||
           (run ? `Last run: ${run.status.replaceAll("_", " ")}` : "No sync has run yet.")}
       </p>
+      {latestEvent ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-zinc-800 pt-3 text-sm text-gray-400">
+          <span>
+            Latest webhook: {latestEvent.topic} · {latestEvent.state.replaceAll("_", " ")}{" "}
+            · attempt {latestEvent.attempts}
+          </span>
+          {latestEvent.state === "retry_wait" ||
+          latestEvent.state === "needs_attention" ? (
+            <button
+              type="button"
+              onClick={() => void retryEvent()}
+              className="rounded border border-zinc-700 px-3 py-1 text-white hover:border-zinc-500"
+            >
+              Retry event
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
