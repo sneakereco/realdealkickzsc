@@ -1,6 +1,6 @@
 // src/services/catalog-service.ts
 import type { TypedSupabaseClient } from "@/lib/supabase/server";
-import { CatalogRepository } from "@/repositories/catalog-repo";
+import { CatalogRepository } from "@/modules/catalog/catalog-repository";
 import { normalizeLabel } from "@/services/product-title-parser";
 
 export class CatalogService {

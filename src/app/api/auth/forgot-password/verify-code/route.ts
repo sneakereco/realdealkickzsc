@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AuthService } from "@/services/auth-service";
-import { AdminAuthService } from "@/services/admin-auth-service";
+import { AdminAuthService } from "@/modules/admin/auth";
 import { getRequestIdFromHeaders } from "@/lib/http/request-id";
 import { logError } from "@/lib/utils/log";
 import { otpVerifySchema } from "@/lib/validation/auth";

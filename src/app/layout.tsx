@@ -3,7 +3,7 @@
 import type { Metadata, Viewport } from "next";
 
 import { CartProvider } from "@/components/cart/CartProvider";
-import { CloudflareWebAnalytics } from "@/components/analytics/CloudflareWebAnalytics";
+import { CloudflareWebAnalytics } from "@/modules/analytics";
 import { ScrollHeader } from "@/components/shell/ScrollHeader";
 import { ClientShell } from "@/components/shell/ClientShell";
 import { SessionProvider } from "@/contexts/SessionContext";

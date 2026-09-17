@@ -4,7 +4,7 @@ import {
   captureLightspeedWebhook,
   LightspeedWebhookError,
   processLightspeedWebhookEvent,
-} from "@/lib/lightspeed/webhook-server";
+} from "@/modules/lightspeed/webhook-server";
 import { logError } from "@/lib/utils/log";
 
 export const runtime = "nodejs";

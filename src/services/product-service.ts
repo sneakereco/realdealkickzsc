@@ -5,7 +5,7 @@ import {
   ProductRepository,
   type ProductFilters,
   type InventoryExportRow,
-} from "@/repositories/product-repo";
+} from "@/modules/catalog/product-repository";
 import type { TablesInsert } from "@/types/db/database.types";
 import type {
   Category,
@@ -13,7 +13,7 @@ import type {
   ProductRow,
   ProductWithDetails,
 } from "@/types/domain/product";
-import { CatalogRepository } from "@/repositories/catalog-repo";
+import { CatalogRepository } from "@/modules/catalog/catalog-repository";
 import { ProductSkuService } from "@/services/product-sku-service";
 import { ProductTitleParserService } from "@/services/product-title-parser-service";
 

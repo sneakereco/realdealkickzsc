@@ -1,7 +1,7 @@
 // src/services/featured-items-service.ts
 import type { TypedSupabaseClient } from "@/lib/supabase/server";
 import { FeaturedItemsRepository } from "@/repositories/featured-items-repo";
-import { ProductRepository } from "@/repositories/product-repo";
+import { ProductRepository } from "@/modules/catalog/product-repository";
 import { log } from "@/lib/utils/log";
 
 export class FeaturedItemsService {

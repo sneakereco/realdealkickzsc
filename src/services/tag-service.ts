@@ -1,7 +1,7 @@
 // src/services/tag-service.ts
 
 import type { TypedSupabaseClient } from "@/lib/supabase/server";
-import { ProductRepository } from "@/repositories/product-repo";
+import { ProductRepository } from "@/modules/catalog/product-repository";
 import type { Tables } from "@/types/db/database.types";
 import type { SizeType } from "@/types/domain/product";
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import * as adminProductsRoute from "../src/app/api/admin/products/route";
-import { ProductRepository } from "../src/repositories/product-repo";
+import { ProductRepository } from "../src/modules/catalog/product-repository";
 
 void test("admin products API exposes reads but no catalog mutations", () => {
   assert.equal(typeof adminProductsRoute.GET, "function");

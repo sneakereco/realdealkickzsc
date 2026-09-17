@@ -3,7 +3,7 @@ import Link from "next/link";
 import { unstable_cache } from "next/cache";
 
 import { createSupabasePublicClient } from "@/lib/supabase/public";
-import { StorefrontService } from "@/services/storefront-service";
+import { StorefrontService } from "@/modules/catalog/storefront";
 
 const BRANDS_REVALIDATE_SECONDS = 300;
 export const revalidate = 300;

@@ -4,8 +4,8 @@ import { AuthError, requireAdminApi } from "@/lib/auth/session";
 import {
   loadLightspeedFamilies,
   SupabaseCatalogReconciliationStore,
-} from "@/lib/lightspeed/server";
-import { reconcileCatalog } from "@/lib/lightspeed/reconciliation";
+} from "@/modules/lightspeed/server";
+import { reconcileCatalog } from "@/modules/lightspeed/reconciliation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { logError } from "@/lib/utils/log";
 
