@@ -15,7 +15,8 @@
     "test:admin-readonly": "tsx --test tests/admin-catalog-read-only.test.ts",
     "test:catalog-only": "tsx --test tests/catalog-only-purchase.test.tsx",
     "test:workflows": "node --test tests/workflows/ci-workflow.test.mjs tests/workflows/staging-workflow.test.mjs tests/workflows/production-workflow.test.mjs",
-    "test:lightspeed": "node --import tsx --test tests/lightspeed-reconciliation.test.ts tests/lightspeed-webhooks.test.ts"
+    "test:lightspeed": "node --import tsx --test tests/lightspeed-reconciliation.test.ts tests/lightspeed-webhooks.test.ts",
+    "test:analytics": "node --test tests/cloudflare-analytics.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

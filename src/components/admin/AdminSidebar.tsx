@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BarChart3,
   Globe,
   LayoutDashboard,
   Menu,
@@ -18,7 +17,6 @@ const navItems: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: "/", label: "Website", icon: Globe },
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/inventory", label: "Inventory", icon: Package },
-  { href: "/admin/analytics/traffic", label: "Analytics", icon: BarChart3 },
   { href: "/admin/profile", label: "Account Security", icon: ShieldCheck },
 ];
 
