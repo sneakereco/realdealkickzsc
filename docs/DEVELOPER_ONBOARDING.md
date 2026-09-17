@@ -100,15 +100,20 @@ Open the local URL printed by Next.js, normally <http://localhost:3000>.
 
 ## Before committing
 
-Run all three commands and fix any failures:
+Run all five commands and fix any failures:
 
 ```bash
 npm run typecheck
 npm run lint
+npm run test:unit
+npm run test:workflows
 doppler run -- npm run build
 ```
 
-Do not commit until all three commands pass.
+Use `npm run test:unit:watch` while developing. Unit tests live in `tests/unit` and use
+Vitest's Node environment; keep workflow configuration assertions on Node's built-in runner.
+
+Do not commit until all five commands pass.
 
 ## Later starts
 

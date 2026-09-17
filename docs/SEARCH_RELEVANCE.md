@@ -1,6 +1,6 @@
 # Storefront search relevance
 
-`tests/search/product-search.test.ts` is the deterministic catalog fixture for storefront
+`tests/unit/product-search.test.ts` is the deterministic catalog fixture for storefront
 search. It covers exact and prefix matches across brand, name, model, and SKU; punctuation,
 case, whitespace, plural tokens, no-result behavior, stable pagination, and a 5,000-product
 latency check.
