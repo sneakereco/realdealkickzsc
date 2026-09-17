@@ -1,0 +1,1 @@
+type=sale.update&domain_prefix=rdk-sandbox&payload=%7B%22id%22%3A%22sale-1%22%2C%22retailer_id%22%3A%22retailer-1%22%2C%22version%22%3A5307658013%7D

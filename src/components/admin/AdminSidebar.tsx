@@ -23,6 +23,7 @@ const navItems: Array<{ href: string; label: string; icon: LucideIcon }> = [
 export function AdminSidebar() {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
+
   const content = (
     <>
       <div className="mb-8">
@@ -62,6 +63,7 @@ export function AdminSidebar() {
       >
         <Menu className="h-5 w-5" />
       </button>
+
       {isOpen ? (
         <div className="fixed inset-0 z-50 bg-black p-6 md:hidden">
           <div className="mb-8 flex items-center justify-between">
@@ -78,6 +80,7 @@ export function AdminSidebar() {
           {content}
         </div>
       ) : null}
+
       <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 border-r border-zinc-800 bg-zinc-900 p-6 md:block">
         {content}
       </aside>

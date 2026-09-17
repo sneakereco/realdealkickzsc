@@ -36,6 +36,7 @@ Imports, configuration, npm scripts, tests, and framework requirements were chec
 | `tailwindcss`            | Tailwind and PostCSS configuration                 |
 | `tsx`                    | TypeScript contract-test scripts                   |
 | `typescript`             | `typecheck` and Next.js compilation                |
+| `vitest`                 | Unit-test runner and watch mode                    |
 
 ## Removed
 

@@ -48,5 +48,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Workflow tests
+        run: npm run test:workflows
+
       - name: Build without deployment credentials
         run: npm run build
