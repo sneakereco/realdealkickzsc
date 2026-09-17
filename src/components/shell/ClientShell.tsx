@@ -54,7 +54,9 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
         <ChatQueryOpener onOpenChat={openChat} />
       </Suspense>
       {isStoreRoute && <ChatLauncher />}
-      {isStoreRoute && chatOpen ? <ChatDrawer onClose={() => setChatOpen(false)} /> : null}
+      {isStoreRoute && chatOpen ? (
+        <ChatDrawer onClose={() => setChatOpen(false)} />
+      ) : null}
       {isStoreRoute && <Footer />}
       {isStoreRoute && <MobileBottomNav />}
     </>
