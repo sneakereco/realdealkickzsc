@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BarChart3,
   Globe,
   LayoutDashboard,
   Menu,
@@ -18,14 +17,12 @@ const navItems: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: "/", label: "Website", icon: Globe },
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/inventory", label: "Inventory", icon: Package },
-  { href: "/admin/analytics/traffic", label: "Analytics", icon: BarChart3 },
   { href: "/admin/profile", label: "Account Security", icon: ShieldCheck },
 ];
 
 export function AdminSidebar() {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
-
   const content = (
     <>
       <div className="mb-8">
@@ -65,7 +62,6 @@ export function AdminSidebar() {
       >
         <Menu className="h-5 w-5" />
       </button>
-
       {isOpen ? (
         <div className="fixed inset-0 z-50 bg-black p-6 md:hidden">
           <div className="mb-8 flex items-center justify-between">
@@ -82,7 +78,6 @@ export function AdminSidebar() {
           {content}
         </div>
       ) : null}
-
       <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 border-r border-zinc-800 bg-zinc-900 p-6 md:block">
         {content}
       </aside>
