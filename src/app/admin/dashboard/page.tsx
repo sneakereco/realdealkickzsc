@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Package } from "lucide-react";
 
+import { LightspeedReconciliationCard } from "@/components/admin/LightspeedReconciliationCard";
 import { logError } from "@/lib/utils/log";
 
 export default function DashboardPage() {
@@ -34,6 +35,7 @@ export default function DashboardPage() {
         </div>
         <span className="text-3xl font-bold text-white">{productsCount}</span>
       </div>
+      <LightspeedReconciliationCard />
     </div>
   );
 }
