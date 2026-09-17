@@ -19,9 +19,8 @@ export default function TermsPage() {
           </p>
           <p>
             By accessing or using the Services, you acknowledge that you have read and
-            understood these Terms. When you create an account or complete a purchase, you
-            will be required to affirmatively accept these Terms (for example, by checking
-            a box). If you do not agree to these Terms, do not use the Services.
+            understood these Terms. If you do not agree to these Terms, do not use the
+            Services.
           </p>
 
           <section>
@@ -89,8 +88,10 @@ export default function TermsPage() {
               6) Pricing, Availability, and Order Acceptance
             </h2>
             <p>
-              All prices are subject to change without notice. Placing an order is an
-              offer to purchase.
+              All prices are subject to change without notice. The Site is a catalog and
+              cart only; adding an item to your cart does not reserve it or place an
+              order. Message @realdealkickzsc on Instagram to confirm price and
+              availability and make an offer to purchase.
             </p>
             <p>
               We may accept, reject, or cancel orders for reasons including, but not
@@ -111,8 +112,8 @@ export default function TermsPage() {
           <section>
             <h2 className="text-2xl font-bold text-white mt-8 mb-4">7) Payments</h2>
             <p>
-              Payments are processed through third-party payment processors. We do not
-              store full payment card numbers.
+              The Site does not accept or process payments. Payment terms for an accepted
+              purchase are arranged directly with us outside the Site.
             </p>
           </section>
 
@@ -121,8 +122,8 @@ export default function TermsPage() {
               8) Shipping, Delivery, and Risk of Loss
             </h2>
             <p>
-              Shipping costs, methods, and estimated delivery times are displayed at
-              checkout. Delivery dates are estimates and are not guaranteed.
+              Shipping or local pickup details are arranged directly with us before an
+              off-site payment. Delivery dates are estimates and are not guaranteed.
             </p>
             <p>
               To the extent permitted by law, responsibility for loss or damage transfers

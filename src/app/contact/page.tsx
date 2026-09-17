@@ -36,8 +36,8 @@ export default function ContactPage() {
         <p>
           Need help putting together a fit? We offer fit services too. Submit your size,
           style, and any specific colors, shoes, or clothing you want included, and we
-          will build a full outfit for you. You purchase it, and we will ship everything
-          straight to you.
+          will build a full outfit for you. We will arrange purchase and delivery with you
+          directly.
         </p>
         <p>Have questions or need anything else? Feel free to reach out.</p>
       </div>

@@ -101,7 +101,7 @@ export default async function LockedPage(props: {
             </div>
 
             <div className="mt-10 text-[11px] uppercase tracking-widest text-zinc-500">
-              Authentic sneakers • Secure checkout • Fast shipping
+              Authentic sneakers • Browse the catalog • Message us to purchase
             </div>
           </div>
         </div>

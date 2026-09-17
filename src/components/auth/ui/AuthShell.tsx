@@ -33,8 +33,7 @@ const LEFT_COPY: Record<LeftVariant, { title: ReactNode; blurb: string }> = {
         <span className="text-red-600">Verified every time.</span>
       </>
     ),
-    blurb:
-      "Create an account for faster checkout, easy order tracking, and order history.",
+    blurb: "Create an account to keep your catalog, cart, and profile in one place.",
   },
   "2fa": {
     title: (
