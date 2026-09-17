@@ -1,54 +1,13 @@
-// app/api/admin/products/route.ts
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
-import { z } from "zod";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAdminApi } from "@/lib/auth/session";
 import { ensureTenantId } from "@/lib/auth/tenant";
-import { ProductService } from "@/services/product-service";
-import { adminProductsQuerySchema, productCreateSchema } from "@/lib/validation/product";
 import { getRequestIdFromHeaders } from "@/lib/http/request-id";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { logError } from "@/lib/utils/log";
-
-const bulkActionSchema = z
-  .object({
-    action: z.enum(["archive", "restore", "delete"]),
-    selectionMode: z.enum(["ids", "filtered"]),
-    ids: z.array(z.string().uuid()).optional(),
-    filters: z
-      .object({
-        q: z.string().trim().min(1).optional(),
-        category: z.array(z.string()).optional(),
-        condition: z.array(z.string()).optional(),
-        stockStatus: z.enum(["in_stock", "out_of_stock", "archived", "all"]).optional(),
-      })
-      .optional(),
-  })
-  .strict();
-
-const extractErrorMessage = (error: unknown): string | null => {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  if (error && typeof error === "object") {
-    const record = error as Record<string, unknown>;
-    if (typeof record.message === "string" && record.message.trim()) {
-      return record.message;
-    }
-    if (typeof record.error === "string" && record.error.trim()) {
-      return record.error;
-    }
-    if (typeof record.details === "string" && record.details.trim()) {
-      return record.details;
-    }
-  }
-  if (typeof error === "string" && error.trim()) {
-    return error;
-  }
-  return null;
-};
+import { adminProductsQuerySchema } from "@/lib/validation/product";
+import { ProductService } from "@/services/product-service";
 
 export async function GET(request: NextRequest) {
   const requestId = getRequestIdFromHeaders(request.headers);
@@ -56,11 +15,8 @@ export async function GET(request: NextRequest) {
   try {
     const session = await requireAdminApi();
     const supabase = await createSupabaseServerClient();
-    const service = new ProductService(supabase);
     const tenantId = await ensureTenantId(session, supabase);
-
     const { searchParams } = new URL(request.url);
-
     const parsedQuery = adminProductsQuerySchema.safeParse({
       q: searchParams.get("q") ?? undefined,
       limit: searchParams.get("limit") ?? undefined,
@@ -83,28 +39,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const {
-      q,
-      limit,
-      page,
-      category,
-      condition,
-      includeOutOfStock,
-      stockStatus,
-      searchMode,
-    } = parsedQuery.data;
-    const effectiveSearchMode = searchMode ?? "inventory";
-
-    const result = await service.listProducts({
-      q,
-      category: category && category.length ? category : undefined,
-      condition: condition && condition.length ? condition : undefined,
-      limit,
-      page,
-      includeOutOfStock,
-      stockStatus,
+    const { category, condition, searchMode, ...filters } = parsedQuery.data;
+    const result = await new ProductService(supabase).listProducts({
+      ...filters,
+      category: category?.length ? category : undefined,
+      condition: condition?.length ? condition : undefined,
+      searchMode: searchMode ?? "inventory",
       tenantId,
-      searchMode: effectiveSearchMode,
     });
 
     return NextResponse.json(result, {
@@ -118,151 +59,6 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json(
       { error: "Failed to load products", requestId },
-      { status: 500, headers: { "Cache-Control": "no-store" } },
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
-  const requestId = getRequestIdFromHeaders(request.headers);
-
-  try {
-    const session = await requireAdminApi();
-    const supabase = await createSupabaseServerClient();
-    const service = new ProductService(supabase);
-
-    const body = await request.json().catch(() => null);
-    const parsed = productCreateSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid payload", issues: parsed.error.format(), requestId },
-        { status: 400, headers: { "Cache-Control": "no-store" } },
-      );
-    }
-    const payload = {
-      ...parsed.data,
-      description: parsed.data.description ?? undefined,
-    };
-
-    const tenantId = await ensureTenantId(session, supabase);
-    const product = await service.createProduct(payload, {
-      userId: session.user.id,
-      tenantId,
-      sellerId: null,
-    });
-    try {
-      revalidateTag(`product:${product.id}`, "max");
-      revalidateTag("products:list", "max");
-    } catch (cacheError) {
-      logError(cacheError, {
-        layer: "cache",
-        requestId,
-        route: "/api/admin/products",
-        event: "cache_revalidate_failed",
-        productId: product.id,
-      });
-    }
-
-    return NextResponse.json(product, {
-      status: 201,
-      headers: { "Cache-Control": "no-store" },
-    });
-  } catch (error) {
-    logError(error, {
-      layer: "api",
-      requestId,
-      route: "/api/admin/products",
-    });
-    const message = extractErrorMessage(error) ?? "Failed to create product";
-    return NextResponse.json(
-      { error: message, requestId },
-      { status: 500, headers: { "Cache-Control": "no-store" } },
-    );
-  }
-}
-
-export async function PATCH(request: NextRequest) {
-  const requestId = getRequestIdFromHeaders(request.headers);
-
-  try {
-    const session = await requireAdminApi();
-    const supabase = await createSupabaseServerClient();
-    const tenantId = await ensureTenantId(session, supabase);
-    const service = new ProductService(supabase);
-
-    const body = await request.json().catch(() => null);
-    const parsed = bulkActionSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid payload", issues: parsed.error.format(), requestId },
-        { status: 400, headers: { "Cache-Control": "no-store" } },
-      );
-    }
-
-    let payload: Record<string, unknown>;
-
-    if (parsed.data.action === "archive") {
-      const result =
-        parsed.data.selectionMode === "ids"
-          ? await service.archiveProductsByIds(parsed.data.ids ?? [], tenantId)
-          : await service.archiveProductsByFilters(tenantId, {
-              q: parsed.data.filters?.q,
-              category: parsed.data.filters?.category,
-              condition: parsed.data.filters?.condition,
-              stockStatus: parsed.data.filters?.stockStatus,
-            });
-      payload = { success: true, archivedCount: result.archivedCount, requestId };
-    } else if (parsed.data.action === "restore") {
-      const result =
-        parsed.data.selectionMode === "ids"
-          ? await service.restoreProductsByIds(parsed.data.ids ?? [], tenantId)
-          : await service.restoreProductsByFilters(tenantId, {
-              q: parsed.data.filters?.q,
-              category: parsed.data.filters?.category,
-              condition: parsed.data.filters?.condition,
-              stockStatus: parsed.data.filters?.stockStatus,
-            });
-      payload = { success: true, restoredCount: result.restoredCount, requestId };
-    } else {
-      const result =
-        parsed.data.selectionMode === "ids"
-          ? await service.deleteProductsByIds(parsed.data.ids ?? [], tenantId)
-          : await service.deleteProductsByFilters(tenantId, {
-              q: parsed.data.filters?.q,
-              category: parsed.data.filters?.category,
-              condition: parsed.data.filters?.condition,
-              stockStatus: parsed.data.filters?.stockStatus,
-            });
-      payload = {
-        success: true,
-        deletedCount: result.deletedCount,
-        failedCount: result.failedCount,
-        requestId,
-      };
-    }
-
-    try {
-      revalidateTag("products:list", "max");
-    } catch (cacheError) {
-      logError(cacheError, {
-        layer: "cache",
-        requestId,
-        route: "/api/admin/products",
-        event: "cache_revalidate_failed",
-      });
-    }
-
-    return NextResponse.json(payload, {
-      headers: { "Cache-Control": "no-store" },
-    });
-  } catch (error) {
-    logError(error, {
-      layer: "api",
-      requestId,
-      route: "/api/admin/products (PATCH)",
-    });
-    return NextResponse.json(
-      { error: "Failed to process selected products", requestId },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }
