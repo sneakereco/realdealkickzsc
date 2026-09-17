@@ -90,7 +90,7 @@ export interface ReconciliationSummary {
 }
 
 export interface CatalogReconciliationStore {
-  startRun(tenantId: string, userId: string): Promise<string>;
+  startRun(tenantId: string, userId: string | null): Promise<string>;
   applyFamily(
     runId: string,
     tenantId: string,
@@ -224,7 +224,7 @@ export function normalizeLightspeedFamily(input: unknown): CanonicalLightspeedFa
 
 export async function reconcileCatalog(input: {
   tenantId: string;
-  userId: string;
+  userId: string | null;
   loadFamilies(): Promise<unknown[]>;
   store: CatalogReconciliationStore;
 }): Promise<ReconciliationSummary> {

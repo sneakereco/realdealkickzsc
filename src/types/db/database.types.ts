@@ -1094,29 +1094,53 @@ export type Database = {
       };
       lightspeed_webhook_events: {
         Row: {
+          attempts: number;
           created_at: string;
           event_id: string;
           id: string;
+          last_error: string | null;
+          lease_until: string | null;
+          next_attempt_at: string;
+          outcome: Json | null;
           payload: Json;
           processed_at: string | null;
+          resource_id: string | null;
+          resource_version: number | null;
+          state: string;
           tenant_id: string | null;
           topic: string;
         };
         Insert: {
+          attempts?: number;
           created_at?: string;
           event_id: string;
           id?: string;
+          last_error?: string | null;
+          lease_until?: string | null;
+          next_attempt_at?: string;
+          outcome?: Json | null;
           payload: Json;
           processed_at?: string | null;
+          resource_id?: string | null;
+          resource_version?: number | null;
+          state?: string;
           tenant_id?: string | null;
           topic: string;
         };
         Update: {
+          attempts?: number;
           created_at?: string;
           event_id?: string;
           id?: string;
+          last_error?: string | null;
+          lease_until?: string | null;
+          next_attempt_at?: string;
+          outcome?: Json | null;
           payload?: Json;
           processed_at?: string | null;
+          resource_id?: string | null;
+          resource_version?: number | null;
+          state?: string;
           tenant_id?: string | null;
           topic?: string;
         };
