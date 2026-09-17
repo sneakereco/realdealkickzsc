@@ -10,9 +10,9 @@ export default function ShippingPage() {
         <div className="text-zinc-400 space-y-6">
           <p className="text-sm">Last updated: December 30, 2025</p>
           <p>
-            This Shipping Policy applies to orders placed through [YOUR DOMAIN] (the
-            &quot;Site&quot;) operated by Realdealkickzsc (&quot;we,&quot; &quot;us,&quot;
-            &quot;our&quot;).
+            This Shipping Policy applies to purchases arranged directly with
+            Realdealkickzsc after browsing realdealkickzsc.com. The website does not
+            accept payments or place orders.
           </p>
 
           <section>
@@ -57,7 +57,7 @@ export default function ShippingPage() {
               <li>payment review or fraud-prevention checks</li>
               <li>
                 product-specific notes such as &quot;pre-order,&quot; &quot;delayed,&quot;
-                or &quot;ships later&quot; (when stated on the listing or at checkout)
+                or &quot;ships later&quot; (when stated on the listing or in our messages)
               </li>
             </ul>
           </section>
@@ -67,8 +67,8 @@ export default function ShippingPage() {
               3) Shipping Rates and Methods
             </h2>
             <p>
-              Shipping options and rates are displayed at checkout. The shipping method
-              you choose affects transit time, not our processing time.
+              Shipping options and rates are agreed directly with us before payment. The
+              shipping method you choose affects transit time, not our processing time.
             </p>
           </section>
 
@@ -97,7 +97,7 @@ export default function ShippingPage() {
             </h2>
             <p>
               You are responsible for providing a complete and accurate shipping address
-              at checkout. If an order is returned or delayed due to an incorrect or
+              directly to us. If an order is returned or delayed due to an incorrect or
               incomplete address, additional shipping charges may apply to reship.
             </p>
           </section>

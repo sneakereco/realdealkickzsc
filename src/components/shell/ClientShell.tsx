@@ -4,26 +4,14 @@
 import { Suspense, useCallback, useState, useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
-import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { ChatDrawer } from "@/components/chat/ChatDrawer";
 import { ChatLauncher } from "@/components/chat/ChatLauncher";
 import { Footer } from "@/components/shell/Footer";
 import { MobileBottomNav } from "@/components/shell/MobileBottomNav";
-import type { ProfileRole } from "@/config/constants/roles";
 
-export function ClientShell({
-  children,
-  isAdmin = false,
-  userEmail = null,
-  role = null,
-}: {
-  children: React.ReactNode;
-  isAdmin?: boolean;
-  userEmail?: string | null;
-  role?: ProfileRole | null;
-}) {
+export function ClientShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -60,71 +48,9 @@ export function ClientShell({
   const isStoreRoute =
     !isAdminRoute && !isAuthRoute && !isCheckoutRoute && !isLockedRoute;
 
-  useEffect(() => {
-    if (!pathname) {
-      return;
-    }
-    if (pathname.startsWith("/admin") || pathname.startsWith("/auth")) {
-      return;
-    }
-
-    const visitorKey = "rdk_visitor_id";
-    const sessionKey = "rdk_session_id";
-    const lastTrackedKey = "rdk_last_tracked_path";
-
-    const getOrCreateId = (storage: Storage, key: string) => {
-      const existing = storage.getItem(key);
-      if (existing) {
-        return existing;
-      }
-      const nextId =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      storage.setItem(key, nextId);
-      return nextId;
-    };
-
-    const visitorId = getOrCreateId(localStorage, visitorKey);
-    const sessionId = getOrCreateId(sessionStorage, sessionKey);
-
-    // OPTIMIZATION: Only track if pathname actually changed (ignore query params for deduplication)
-    const lastTracked = sessionStorage.getItem(lastTrackedKey);
-    if (lastTracked === pathname) {
-      return; // Already tracked this pathname in this session
-    }
-    sessionStorage.setItem(lastTrackedKey, pathname);
-
-    const path = `${window.location.pathname}${window.location.search}`;
-
-    const payload = JSON.stringify({
-      path,
-      referrer: document.referrer || null,
-      visitorId,
-      sessionId,
-    });
-
-    if (navigator.sendBeacon) {
-      const blob = new Blob([payload], { type: "application/json" });
-      navigator.sendBeacon("/api/analytics/track", blob);
-    } else {
-      fetch("/api/analytics/track", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: payload,
-        keepalive: true,
-      }).catch(() => undefined);
-    }
-  }, [pathname]); // ✅ OPTIMIZATION: Removed searchParams - only track pathname changes
-
-  const showAdminSidebar = isAdmin && isStoreRoute && Boolean(role);
-
   return (
     <>
-      {showAdminSidebar && (
-        <AdminSidebar userEmail={userEmail} role={role as ProfileRole} />
-      )}
-      <div className={showAdminSidebar ? "md:ml-64" : undefined}>{children}</div>
+      {children}
 
       <SearchOverlay isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
       <CartDrawer isOpen={cartOpen} onClose={() => setCartOpen(false)} />
