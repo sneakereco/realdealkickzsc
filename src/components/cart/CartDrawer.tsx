@@ -1,12 +1,10 @@
-// src/components/cart/CartDrawer.tsx (UPDATE - add checkout navigation)
-
 "use client";
 
 import { X, Minus, Plus, Trash2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
+import { InstagramPurchaseNotice } from "@/components/purchase/InstagramPurchaseNotice";
 import { useCart } from "./CartProvider";
 
 interface CartDrawerProps {
@@ -15,13 +13,7 @@ interface CartDrawerProps {
 }
 
 export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
-  const router = useRouter();
   const { items, removeItem, updateQuantity, total } = useCart();
-
-  const handleCheckout = () => {
-    onClose();
-    router.push("/checkout");
-  };
 
   if (!isOpen) {
     return null;
@@ -140,27 +132,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <span>Subtotal</span>
                   <span>${(total / 100).toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Shipping</span>
-                  <span>Calculated at checkout</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tax</span>
-                  <span>Calculated at checkout</span>
-                </div>
                 <div className="flex justify-between text-base sm:text-lg font-bold text-white pt-2">
-                  <span>Total</span>
-                  <span>${(total / 100).toFixed(2)}+</span>
+                  <span>Cart subtotal</span>
+                  <span>${(total / 100).toFixed(2)}</span>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-3">
-                <button
-                  onClick={handleCheckout}
-                  className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 sm:py-3 rounded transition text-sm sm:text-base"
-                >
-                  Checkout
-                </button>
+                <InstagramPurchaseNotice />
                 <div className="text-center">
                   <Link
                     href="/cart"
