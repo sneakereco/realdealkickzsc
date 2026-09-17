@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Eye, Package, Users } from "lucide-react";
 
 import { TrafficChart } from "@/components/admin/charts/TrafficChart";
+import { LightspeedReconciliationCard } from "@/components/admin/LightspeedReconciliationCard";
 import { logError } from "@/lib/utils/log";
 
 export default function DashboardPage() {
@@ -70,6 +71,8 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      <LightspeedReconciliationCard />
 
       <div className="rounded border border-zinc-800/70 bg-zinc-900 p-6">
         <div className="mb-4 flex items-center justify-between">
