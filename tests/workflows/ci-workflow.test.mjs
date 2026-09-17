@@ -12,6 +12,8 @@ test("pull-request CI validates main without deployment secrets", async () => {
   assert.match(workflow, /npm run format:check/);
   assert.match(workflow, /npm run lint/);
   assert.match(workflow, /npm run typecheck/);
+  assert.match(workflow, /npm run test:unit/);
+  assert.match(workflow, /npm run test:workflows/);
   assert.match(workflow, /npm run build/);
   assert.doesNotMatch(workflow, /\$\{\{\s*secrets\./);
   assert.doesNotMatch(workflow, /environment:\s*(staging|production)/);

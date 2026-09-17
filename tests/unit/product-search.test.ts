@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 
-import {
-  buildSearchTerms,
-  rankSearchCandidates,
-} from "../../src/lib/search/product-search";
+import { buildSearchTerms, rankSearchCandidates } from "@/lib/search/product-search";
 
 const catalog = [
   {
