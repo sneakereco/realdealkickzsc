@@ -84,7 +84,8 @@ doppler run -- npm run build
    credentials.
 3. Merge only after review and green checks. A merge to `main` applies pending migrations,
    deploys Vercel staging, then checks `/api/readyz`.
-4. After staging evidence is accepted, tag a commit already in `main` as `vMAJOR.MINOR.PATCH`.
+4. After staging evidence is accepted, tag a commit already in `main` as `vMAJOR.MINOR.PATCH`,
+   optionally with a numbered `-alpha.N` or `-beta.N` suffix (for example, `v1.2.3-beta.1`).
    The production workflow repeats validation, migrations, deployment, and readiness checks.
 
 A green source PR does not prove staging or production deployment. Use the corresponding
