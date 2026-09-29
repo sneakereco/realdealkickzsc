@@ -1,8 +1,40 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const path = new URL("../../.github/workflows/production.yml", import.meta.url);
+
+test("release validation accepts stable and numbered alpha/beta tags only", async () => {
+  const workflow = await readFile(path, "utf8");
+  const validation = workflow.match(
+    /          if \[\[ ! "\$GITHUB_REF_NAME"[\s\S]*?          fi/,
+  );
+  assert.ok(validation, "release tag validation must exist");
+  const bash =
+    process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "bash";
+
+  for (const [tag, status] of [
+    ["v1.2.3", 0],
+    ["v0.0.0", 0],
+    ["v1.2.3-alpha.0", 0],
+    ["v1.2.3-beta.12", 0],
+    ["v1.2.3-alpha", 1],
+    ["v1.2.3-beta.x", 1],
+    ["v1.2.3-beta.01", 1],
+    ["v01.2.3", 1],
+    ["v1.2.3-rc.1", 1],
+    ["v1.2.3-beta.1.extra", 1],
+    ["1.2.3-alpha.1", 1],
+  ]) {
+    const result = spawnSync(bash, ["-c", validation[0]], {
+      env: { ...process.env, GITHUB_REF_NAME: tag },
+      encoding: "utf8",
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, status, `${tag}: ${result.stderr}`);
+  }
+});
 
 test("semantic tags deploy production only from main history", async () => {
   const workflow = await readFile(path, "utf8");
