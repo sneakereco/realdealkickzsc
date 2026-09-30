@@ -101,18 +101,6 @@ export class ProfileRepository {
     }
   }
 
-  async updateNotificationPreferences(
-    userId: string,
-    input: {
-      chat_notifications_enabled?: boolean;
-    },
-  ) {
-    const { error } = await this.supabase.from("profiles").update(input).eq("id", userId);
-    if (error) {
-      throw error;
-    }
-  }
-
   async listStaffProfiles() {
     const { data, error } = await this.supabase
       .from("profiles")

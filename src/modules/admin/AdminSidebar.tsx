@@ -3,21 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Globe,
-  LayoutDashboard,
-  Menu,
-  Package,
-  ShieldCheck,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { Globe, LayoutDashboard, Menu, Package, X, type LucideIcon } from "lucide-react";
 
 const navItems: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: "/", label: "Website", icon: Globe },
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/inventory", label: "Inventory", icon: Package },
-  { href: "/admin/profile", label: "Account Security", icon: ShieldCheck },
 ];
 
 export function AdminSidebar() {

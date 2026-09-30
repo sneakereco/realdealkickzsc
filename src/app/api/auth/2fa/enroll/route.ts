@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         factorId,
-        qrCode: totp.qr_code,
+        qrCode: totp.qr_code.trimEnd(),
         uri: totp.uri,
       },
       { headers: { "Cache-Control": "no-store" } },

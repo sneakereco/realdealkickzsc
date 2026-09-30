@@ -1,18 +1,6 @@
 // src/lib/validation/admin.ts
 import { z } from "zod";
 
-export const adminInviteCreateSchema = z
-  .object({
-    role: z.enum(["admin", "super_admin"]),
-  })
-  .strict();
-
-export const adminInviteAcceptSchema = z
-  .object({
-    token: z.string().trim().min(32),
-  })
-  .strict();
-
 export const adminNotificationUpdateSchema = z
   .object({
     ids: z.array(z.string().uuid()).optional(),
@@ -24,12 +12,6 @@ export const adminNotificationUpdateSchema = z
       Boolean(value.mark_all) || (Array.isArray(value.ids) && value.ids.length > 0),
     { message: "Provide ids or mark_all" },
   );
-
-export const adminPreferencesSchema = z
-  .object({
-    chat_notifications_enabled: z.boolean().optional(),
-  })
-  .strict();
 
 export const payoutSettingsSchema = z
   .object({

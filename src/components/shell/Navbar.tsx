@@ -588,7 +588,9 @@ export function Navbar({
                 priority
               />
             </div>
-            <span className="text-white font-bold text-lg tracking-tight hidden sm:block">
+            <span
+              className={`text-white font-bold text-lg tracking-tight ${isAdminUser ? "hidden sm:block lg:hidden xl:block" : "hidden sm:block"}`}
+            >
               REALDEALKICKZSC
             </span>
           </Link>
@@ -779,6 +781,14 @@ export function Navbar({
         </div>
 
         <div className="hidden md:flex items-center gap-4">
+          {isAdminUser && (
+            <Link
+              href="/admin/dashboard"
+              className="whitespace-nowrap rounded border border-zinc-700 px-3 py-2 text-sm text-white hover:bg-zinc-900"
+            >
+              Back to admin
+            </Link>
+          )}
           <Link
             href="/"
             className="text-gray-300 hover:text-white transition-colors cursor-pointer"
@@ -881,6 +891,14 @@ export function Navbar({
         </div>
 
         <div className="flex items-center gap-3 md:hidden">
+          {isAdminUser && (
+            <Link
+              href="/admin/dashboard"
+              className="rounded border border-zinc-700 px-3 py-2 text-sm text-white hover:bg-zinc-900"
+            >
+              Back to admin
+            </Link>
+          )}
           <button
             onClick={() => setIsMobileMenuOpen(true)}
             className="text-gray-300 cursor-pointer"

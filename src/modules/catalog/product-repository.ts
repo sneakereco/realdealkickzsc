@@ -149,6 +149,18 @@ export class ProductRepository {
 
   constructor(private readonly supabase: TypedSupabaseClient) {}
 
+  private async readAllPages<T>(query: {
+    range(from: number, to: number): PromiseLike<{ data: T[] | null; error: unknown }>;
+  }): Promise<T[]> {
+    const rows: T[] = [];
+    for (;;) {
+      const { data, error } = await query.range(rows.length, rows.length + 999);
+      if (error) throw error;
+      if (!data?.length) return rows;
+      rows.push(...data);
+    }
+  }
+
   private readonly storefrontSearchFields = ["brand", "name", "model"];
 
   private readonly inventorySearchFields = ["brand", "name", "model"];
@@ -253,14 +265,10 @@ export class ProductRepository {
     // Order for stable printing
     query = query
       .order("sku", { ascending: true })
-      .order("size_label", { ascending: true });
+      .order("size_label", { ascending: true })
+      .order("id", { ascending: true });
 
-    const { data, error } = await query.limit(20000);
-    if (error) {
-      throw error;
-    }
-
-    const rows = (data ?? []) as VariantExportRow[];
+    const rows = (await this.readAllPages(query)) as VariantExportRow[];
 
     return rows
       .map((row) => {
@@ -353,9 +361,7 @@ export class ProductRepository {
       if (filters.stockStatus === "out_of_stock") {
         baseQuery = baseQuery.eq("is_out_of_stock", true);
       } else if (filters.stockStatus === "in_stock") {
-        if (searchMode !== "inventory") {
-          baseQuery = baseQuery.eq("is_out_of_stock", false);
-        }
+        baseQuery = baseQuery.eq("is_out_of_stock", false);
       } else if (!includeOutOfStock) {
         // default (storefront-safe)
         baseQuery = baseQuery.eq("is_out_of_stock", false);
@@ -412,12 +418,17 @@ export class ProductRepository {
         }
         query = query.range(offset, offset + limit - 1);
       } else {
-        // Rank a production-like catalog in one pass so every page shares one stable order.
-        const fetchLimit = 5000;
-        query = query.order("created_at", { ascending: false }).range(0, fetchLimit - 1);
+        // Rank all matches so later pages remain reachable beyond the API row cap.
+        query = query.order("created_at", { ascending: false }).order("id");
       }
 
-      const { data, error, count } = await query;
+      const { data, error, count } = hasSearchQuery
+        ? await this.readAllPages(query).then((rows) => ({
+            data: rows,
+            error: null,
+            count: rows.length,
+          }))
+        : await query;
       if (error) {
         throw error;
       }
@@ -477,9 +488,7 @@ export class ProductRepository {
     if (filters.stockStatus === "out_of_stock") {
       detailQuery = detailQuery.eq("is_out_of_stock", true);
     } else if (filters.stockStatus === "in_stock") {
-      if (searchMode !== "inventory") {
-        detailQuery = detailQuery.eq("is_out_of_stock", false);
-      }
+      detailQuery = detailQuery.eq("is_out_of_stock", false);
     } else if (!includeOutOfStock) {
       detailQuery = detailQuery.eq("is_out_of_stock", false);
     }
@@ -555,9 +564,7 @@ export class ProductRepository {
     if (filters.stockStatus === "out_of_stock") {
       query = query.eq("product.is_out_of_stock", true);
     } else if (filters.stockStatus === "in_stock") {
-      if (filters.searchMode !== "inventory") {
-        query = query.eq("product.is_out_of_stock", false);
-      }
+      query = query.eq("product.is_out_of_stock", false).gt("stock", 0);
     } else if (shouldFilterOutOfStockProducts) {
       query = query.eq("product.is_out_of_stock", false);
     }
@@ -590,10 +597,7 @@ export class ProductRepository {
       query = query.in("product.id", sizeProductIds);
     }
 
-    const { data, error } = await query.limit(20000);
-    if (error) {
-      throw error;
-    }
+    const data = await this.readAllPages(query.order("id"));
 
     return new Set(
       (data ?? [])
@@ -645,9 +649,7 @@ export class ProductRepository {
     if (filters.stockStatus === "out_of_stock") {
       query = query.eq("product.is_out_of_stock", true);
     } else if (filters.stockStatus === "in_stock") {
-      if (filters.searchMode !== "inventory") {
-        query = query.eq("product.is_out_of_stock", false);
-      }
+      query = query.eq("product.is_out_of_stock", false).gt("stock", 0);
     } else if (shouldFilterOutOfStockProducts) {
       query = query.eq("product.is_out_of_stock", false);
     }
@@ -680,10 +682,7 @@ export class ProductRepository {
       query = query.in("product.id", sizeProductIds);
     }
 
-    const { data, error } = await query.limit(20000);
-    if (error) {
-      throw error;
-    }
+    const data = await this.readAllPages(query.order("id"));
 
     return (data ?? []).reduce((sum, row) => {
       const record = row as { stock?: number | null };

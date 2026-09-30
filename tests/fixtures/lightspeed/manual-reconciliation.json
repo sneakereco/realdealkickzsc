@@ -6,8 +6,8 @@
     "name": "Air Jordan 1 Retro High OG Bred",
     "description": "Black and red high-top sneaker.",
     "classification": "VARIANT",
-    "variant_attribute_ids": ["attribute-color", "attribute-size"],
-    "tag_ids": ["tag-condition-new"],
+    "variant_attribute_ids": ["attribute-condition", "attribute-size"],
+    "tag_ids": null,
     "deleted_at": null,
     "images": [
       { "id": "image-1", "url": "https://cdn.example.test/aj1.jpg", "deleted_at": null }
@@ -16,7 +16,7 @@
       {
         "id": "product-10",
         "active": { "in_store": true },
-        "variant_attributes": ["Red", "10"],
+        "variant_attributes": ["new", "10"],
         "prices": { "price_including_tax": "189.99", "price_excluding_tax": "175.92" },
         "cost": "100.00",
         "codes": [{ "type": "CUSTOM", "code": "RDK-AJ1-BRED-10" }],
@@ -27,9 +27,8 @@
   "includes": {
     "brands": [{ "id": "brand-1", "name": "Jordan", "deleted_at": null }],
     "categories": [{ "id": "category-1", "name": "Sneakers", "deleted_at": null }],
-    "tags": [{ "id": "tag-condition-new", "name": "Condition: New", "deleted_at": null }],
     "variant_attributes": [
-      { "id": "attribute-color", "name": "Color", "deleted_at": null },
+      { "id": "attribute-condition", "name": "Condition", "deleted_at": null },
       { "id": "attribute-size", "name": "Size", "deleted_at": null }
     ]
   },
