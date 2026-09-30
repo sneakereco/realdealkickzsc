@@ -3,7 +3,10 @@ import { beforeEach, expect, test, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   from: vi.fn(),
-  reconcile: vi.fn(),
+  enqueue: vi.fn(),
+  recover: vi.fn(),
+  cancel: vi.fn(),
+  after: vi.fn(),
   admin: vi.fn(),
   store: vi.fn(),
 }));
@@ -17,21 +20,20 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/supabase/service-role", () => ({
   createSupabaseAdminClient: mocks.admin,
 }));
-vi.mock("@/modules/lightspeed/server", () => ({
-  loadLightspeedFamilies: vi.fn(),
-  SupabaseCatalogReconciliationStore: class {
-    constructor(db: unknown) {
-      mocks.store(db);
-    }
-  },
+vi.mock("next/server", async (original) => ({
+  ...(await original<object>()),
+  after: mocks.after,
+}));
+vi.mock("@/modules/lightspeed/sync-jobs", () => ({
+  enqueueSync: mocks.enqueue,
+  recoverLegacySyncs: mocks.recover,
+  cancelSync: mocks.cancel,
+  publicSyncRun: (run: unknown) => run,
+  runSyncWorker: vi.fn(),
 }));
 vi.mock("@/lib/utils/log", () => ({ logError: vi.fn() }));
-vi.mock("@/modules/lightspeed/reconciliation", async (original) => ({
-  ...(await original<object>()),
-  reconcileCatalog: mocks.reconcile,
-}));
 
-import { GET, POST } from "@/app/api/admin/lightspeed/reconcile/route";
+import { GET, POST, DELETE } from "@/app/api/admin/lightspeed/reconcile/route";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -41,17 +43,13 @@ beforeEach(() => {
   });
 });
 
-test("executes an authorized sync with server credentials independent of session loss", async () => {
-  const db = { from: vi.fn() };
-  mocks.admin.mockReturnValue(db);
-  mocks.reconcile.mockImplementationOnce((options) => {
-    mocks.auth.mockRejectedValue(new Error("Session not found"));
-    expect(options).toMatchObject({ tenantId: "tenant-1", userId: "admin" });
-    return Promise.resolve({ failed: 0, created: 1, updated: 0, skipped: 0 });
-  });
-  expect((await POST()).status).toBe(200);
-  expect(mocks.store).toHaveBeenCalledWith(db);
-  expect(mocks.auth).toHaveBeenCalledTimes(1);
+test("returns a running job immediately and schedules work after the response", async () => {
+  mocks.enqueue.mockResolvedValue({ id: "run-1", status: "running" });
+  const response = await POST();
+  expect(response.status).toBe(202);
+  expect(await response.json()).toEqual({ run: { id: "run-1", status: "running" } });
+  expect(mocks.enqueue).toHaveBeenCalledWith("tenant-1", "admin");
+  expect(mocks.after).toHaveBeenCalledTimes(1);
 });
 
 test("does not create a privileged client without admin authorization and a tenant", async () => {
@@ -60,7 +58,7 @@ test("does not create a privileged client without admin authorization and a tena
   mocks.auth.mockResolvedValueOnce({ user: { id: "admin" }, profile: {} });
   expect((await POST()).status).toBe(400);
   expect(mocks.admin).not.toHaveBeenCalled();
-  expect(mocks.reconcile).not.toHaveBeenCalled();
+  expect(mocks.enqueue).not.toHaveBeenCalled();
 });
 
 test("loads every page of legacy failures scoped to the authenticated tenant and run", async () => {
@@ -111,22 +109,41 @@ test("loads every page of legacy failures scoped to the authenticated tenant and
   ]);
 });
 
-test("returns HTTP 422 when every family failed", async () => {
-  mocks.reconcile.mockResolvedValue({
-    failed: 2,
-    created: 0,
-    updated: 0,
-    skipped: 0,
-    error: "Every family failed",
-  });
-  const response = await POST();
-  expect(response.status).toBe(422);
-  expect((await response.json()).error).toBe("Every family failed");
+test("rejects duplicate starts without scheduling another worker", async () => {
+  mocks.enqueue.mockRejectedValueOnce(
+    new Error("lightspeed_reconciliation_already_running"),
+  );
+  expect((await POST()).status).toBe(409);
+  expect(mocks.after).not.toHaveBeenCalled();
 });
 
-test("keeps partial imports distinct from total failure", async () => {
-  mocks.reconcile.mockResolvedValue({ failed: 1, created: 1, updated: 0, skipped: 0 });
-  expect((await POST()).status).toBe(200);
+test("explains missing background-worker configuration without creating a stuck run", async () => {
+  mocks.enqueue.mockRejectedValueOnce(new Error("lightspeed_worker_not_configured"));
+  const response = await POST();
+  expect(response.status).toBe(503);
+  expect((await response.json()).error).toContain("CRON_SECRET");
+  expect(mocks.after).not.toHaveBeenCalled();
+});
+
+test("cancellation validates the ID and uses only the authenticated tenant", async () => {
+  const runId = "00000000-0000-4000-8000-000000000001";
+  mocks.cancel.mockResolvedValue({
+    id: runId,
+    status: "running",
+    cancel_requested_at: "now",
+  });
+  const response = await DELETE(
+    new Request("http://localhost", {
+      method: "DELETE",
+      body: JSON.stringify({ runId, tenantId: "attacker" }),
+    }),
+  );
+  expect(response.status).toBe(200);
+  expect(mocks.cancel).toHaveBeenCalledWith(runId, "tenant-1");
+  expect(
+    (await DELETE(new Request("http://localhost", { method: "DELETE", body: "invalid" })))
+      .status,
+  ).toBe(400);
 });
 
 test("does not read run errors before authentication", async () => {

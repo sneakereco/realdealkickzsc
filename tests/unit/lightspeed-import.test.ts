@@ -155,7 +155,7 @@ test("imports new empty variants, preserves identities, and restores visibility 
 });
 
 // A stateful database double: exercise real importer/tag helpers over repeated writes.
-function database() {
+function database(afterWrite?: (table: string, operation: string) => void) {
   type Row = Record<string, unknown>;
   const tables: Record<string, Row[]> = {};
   let sequence = 0;
@@ -276,6 +276,7 @@ function database() {
           else if (operation === "delete")
             tables[table] = tables[table].filter((row) => !rows.includes(row));
           checkSizes();
+          if (operation !== "select") afterWrite?.(table, operation);
           const result = rows.slice(start, end).map((row) =>
             table === "product_tags"
               ? { ...row, tag: tables.tags?.find((tag) => tag.id === row.tag_id) }
@@ -299,6 +300,50 @@ function database() {
   };
   return { db: db as unknown as TypedSupabaseClient, tables };
 }
+
+test.each(["products", "product_variants", "sku-change"])(
+  "recovers a committed %s insert whose response was lost before linking",
+  async (interruptedTable) => {
+    vi.spyOn(ProductTitleParserService.prototype, "parseTitle").mockImplementation(
+      (input) =>
+        Promise.resolve(
+          parseTitleWithCatalog(input, { brandAliases: [], modelAliasesByBrand: {} }),
+        ),
+    );
+    let interrupted = false;
+    const { db, tables } = database((table, operation) => {
+      if (
+        !interrupted &&
+        table ===
+          (interruptedTable === "sku-change" ? "product_variants" : interruptedTable) &&
+        operation === "insert"
+      ) {
+        interrupted = true;
+        throw new Error("worker interrupted after committed write");
+      }
+    });
+    const raw = JSON.parse(
+      await readFile(
+        new URL("../fixtures/lightspeed/manual-reconciliation.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const family = normalizeLightspeedFamily(raw);
+    await expect(
+      new SupabaseCatalogReconciliationStore(db).applyFamily("run", "tenant", family),
+    ).rejects.toThrow("interrupted");
+    if (interruptedTable === "sku-change")
+      family[0].variants[0].sku = "CHANGED-AFTER-INTERRUPTION";
+    await new SupabaseCatalogReconciliationStore(db).applyFamily("run", "tenant", family);
+    expect(tables.products).toHaveLength(1);
+    expect(tables.product_variants).toHaveLength(1);
+    expect(tables.lightspeed_product_links).toHaveLength(1);
+    expect(tables.lightspeed_product_links[0].variant_id).toBe(
+      tables.product_variants[0].id,
+    );
+    expect(tables.product_variants[0].sku).toBe(family[0].variants[0].sku);
+  },
+);
 
 test.each(["10", "11"])(
   "imports untagged conditions and preserves identities through size %s swaps",

@@ -4,8 +4,11 @@ import { LightspeedReviewQueue } from "./LightspeedReviewQueue";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ReconciliationSummary, FailureGroup } from "./reconciliation";
+import { readSyncResponse } from "./sync-response";
 
 export interface Run {
+  id?: string;
+  cancel_requested_at?: string | null;
   status: string;
   summary: Partial<ReconciliationSummary> | null;
   created_at: string;
@@ -39,8 +42,7 @@ export function LightspeedReconciliationCard() {
           cache: "no-store",
           signal: AbortSignal.timeout(10_000),
         });
-        if (!response.ok) throw new Error("status_unavailable");
-        const payload = await response.json();
+        const payload = await readSyncResponse<{ run: Run | null }>(response);
         if (disposed) return;
         setRun(payload.run ?? null);
         setStatusError("");
@@ -76,20 +78,35 @@ export function LightspeedReconciliationCard() {
     setMessage("");
     try {
       const response = await fetch("/api/admin/lightspeed/reconcile", { method: "POST" });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Sync failed");
-      }
-      setMessage(
-        payload.summary.failed > 0
-          ? "Sync completed with item errors."
-          : "Sync completed.",
-      );
+      const payload = await readSyncResponse<{ run: Run }>(response);
+      setRun(payload.run);
+      setMessage("");
     } catch (error) {
       setMessage(
         error instanceof Error
           ? error.message
           : "Could not confirm the sync result. Check the run status below.",
+      );
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function cancelSync() {
+    if (!run?.id) return;
+    setRunning(true);
+    try {
+      const response = await fetch("/api/admin/lightspeed/reconcile", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId: run.id }),
+      });
+      const payload = await readSyncResponse<{ run: Run }>(response);
+      setRun(payload.run);
+      setMessage("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Could not request cancellation.",
       );
     } finally {
       setRunning(false);
@@ -105,11 +122,7 @@ export function LightspeedReconciliationCard() {
         `/api/admin/lightspeed/events/${encodeURIComponent(latestEvent.id)}/retry`,
         { method: "POST" },
       );
-      const payload = await response.json();
-      if (!response.ok) {
-        setMessage(payload.error ?? "Webhook retry failed");
-        return;
-      }
+      const payload = await readSyncResponse<{ event: WebhookEvent }>(response);
       setLatestEvent(payload.event);
       setMessage(`Webhook retry ${payload.event.state.replaceAll("_", " ")}.`);
     } catch {
@@ -147,6 +160,16 @@ export function LightspeedReconciliationCard() {
           <RefreshCw className={`h-4 w-4 ${running ? "animate-spin" : ""}`} />
           {running ? "Syncing…" : "Sync from Lightspeed"}
         </button>
+        {run?.status === "running" && run.id ? (
+          <button
+            type="button"
+            onClick={() => void cancelSync()}
+            disabled={running || !!run.cancel_requested_at}
+            className="min-h-11 rounded border border-zinc-500 px-4 py-2 font-semibold text-white disabled:opacity-50"
+          >
+            {run.cancel_requested_at ? "Cancelling…" : "Cancel sync"}
+          </button>
+        ) : null}
       </div>
 
       {counts ? (
@@ -165,11 +188,19 @@ export function LightspeedReconciliationCard() {
       ) : null}
 
       <p className="mt-4 min-h-5 text-sm text-gray-300" role="status" aria-live="polite">
-        {run?.summary?.error ||
-          message ||
+        {message ||
+          run?.summary?.error ||
+          (run?.status === "running" && run.cancel_requested_at
+            ? "Cancellation requested. Waiting for the current family to finish; saved changes will be kept."
+            : "") ||
           (run ? `Last run: ${run.status.replaceAll("_", " ")}` : "No sync has run yet.")}
       </p>
       {run ? <SyncProgress run={run} now={now} /> : null}
+      {run?.id ? (
+        <p className="mt-2 break-all text-xs text-gray-400">
+          Run ID: <code>{run.id}</code>
+        </p>
+      ) : null}
       <LightspeedReviewQueue disabled={running || run?.status === "running"} />
       {run?.summary?.failure_groups?.length ? (
         <SyncErrors groups={run.summary.failure_groups} />
@@ -253,6 +284,7 @@ export function SyncProgress({ run, now }: { run: Run; now: number }) {
     retiring: "Checking removed families",
     completed: "Finished",
     failed: "Stopped",
+    cancelled: "Cancelled",
   };
   return (
     <div className="mt-3 space-y-2 text-sm text-gray-300">
@@ -283,7 +315,12 @@ export function SyncProgress({ run, now }: { run: Run; now: number }) {
       </p>
       {!isRunning && run.completed_at && (
         <p>
-          {run.status === "failed" ? "Stopped" : "Completed"}:{" "}
+          {run.status === "cancelled"
+            ? "Cancelled"
+            : run.status === "failed"
+              ? "Stopped"
+              : "Completed"}
+          :{" "}
           <time dateTime={run.completed_at}>
             {new Date(run.completed_at).toLocaleString()}
           </time>

@@ -1059,6 +1059,11 @@ export type Database = {
       };
       lightspeed_sync_runs: {
         Row: {
+          checkpoint: Json | null
+          lease_token: string | null
+          lease_until: string | null
+          cancel_requested_at: string | null
+          worker_attempts: number
           completed_at: string | null;
           created_at: string;
           id: string;
@@ -1069,6 +1074,11 @@ export type Database = {
           tenant_id: string;
         };
         Insert: {
+          checkpoint?: Json | null
+          lease_token?: string | null
+          lease_until?: string | null
+          cancel_requested_at?: string | null
+          worker_attempts?: number
           completed_at?: string | null;
           created_at?: string;
           id?: string;
@@ -1079,6 +1089,11 @@ export type Database = {
           tenant_id: string;
         };
         Update: {
+          checkpoint?: Json | null
+          lease_token?: string | null
+          lease_until?: string | null
+          cancel_requested_at?: string | null
+          worker_attempts?: number
           completed_at?: string | null;
           created_at?: string;
           id?: string;
@@ -2832,6 +2847,11 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      enqueue_lightspeed_sync: { Args: { p_tenant_id: string; p_user_id: string | null; p_checkpoint: Json; p_summary: Json; p_event_id?: string }; Returns: Json }
+      recover_legacy_lightspeed_sync: { Args: { p_tenant_id?: string }; Returns: undefined }
+      claim_lightspeed_sync: { Args: { p_run_id: string }; Returns: Json }
+      cancel_lightspeed_sync: { Args: { p_run_id: string; p_tenant_id: string }; Returns: Json }
+      save_lightspeed_sync: { Args: { p_run_id: string; p_token: string; p_checkpoint: Json; p_summary: Json; p_status: string; p_release: boolean }; Returns: Json }
       move_lightspeed_variants: {
         Args: { p_tenant_id: string; p_family_id: string; p_moves: Json };
         Returns: undefined;

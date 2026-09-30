@@ -20,6 +20,10 @@ import { checkSiteLock } from "@/proxy/site-lock";
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const requestId = generateRequestId();
   const { pathname, hostname } = request.nextUrl;
+  // Machine-to-machine worker: the route requires CRON_SECRET, not a browser session.
+  if (pathname === "/api/cron/lightspeed") {
+    return finalizeProxyResponse(NextResponse.next(), requestId);
+  }
   const isLocalhost =
     hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
   const isLocalDev = isLocalhost;
