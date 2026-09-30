@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 
 import { z } from "zod";
 
@@ -33,6 +34,29 @@ const inventorySchema = z.array(
     deleted_at: z.string().nullable().optional(),
   }),
 );
+
+export async function loadLightspeedFamilyPage(after: number, signal?: AbortSignal) {
+  if (!/^[a-z0-9-]+$/i.test(env.LIGHTSPEED_DOMAIN_PREFIX))
+    throw new Error("lightspeed_domain_prefix_invalid");
+  const query = new URLSearchParams({ after: String(after), page_size: "200" });
+  query.append("includes[]", "families");
+  const page = pageSchema.parse(
+    await requestJson(
+      `https://${env.LIGHTSPEED_DOMAIN_PREFIX}.retail.lightspeed.app/api/2026-10/products?${query}`,
+      { signal },
+    ),
+  );
+  if (
+    page.data.length &&
+    (!page.version || page.version.max === null || page.version.max <= after)
+  )
+    throw new Error("lightspeed_cursor_did_not_advance");
+  return {
+    ids: page.data.map((p) => p.family_id),
+    cursor: page.version?.max ?? after,
+    count: page.data.length,
+  };
+}
 
 export async function loadLightspeedFamilies(
   report?: ReportProgress,
@@ -79,6 +103,7 @@ export async function loadLightspeedFamilies(
 export async function loadLightspeedFamily(
   familyId: string,
   includeInventory = true,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   if (!/^[a-z0-9-]+$/i.test(env.LIGHTSPEED_DOMAIN_PREFIX))
     throw new Error("lightspeed_domain_prefix_invalid");
@@ -89,6 +114,7 @@ export async function loadLightspeedFamily(
   );
   const family = await requestJson(
     `${baseUrl}/2026-10/product_families/${encodeURIComponent(familyId)}?${includes}`,
+    { signal },
   );
   if (!includeInventory) return { ...(family as object), inventory: [] };
   const productIds = familyProductsSchema.parse(family).data.products.map(({ id }) => id);
@@ -97,6 +123,7 @@ export async function loadLightspeedFamily(
       productIds.map(async (productId) =>
         inventorySchema.parse(
           await requestJson(`${baseUrl}/2026-07/inventory`, {
+            signal,
             method: "POST",
             body: JSON.stringify({
               include_deleted: false,
@@ -114,7 +141,10 @@ export async function loadLightspeedFamily(
 }
 
 async function requestJson(url: string, init: RequestInit = {}): Promise<unknown> {
-  const signal = AbortSignal.timeout(30_000);
+  const signal = AbortSignal.any([
+    AbortSignal.timeout(30_000),
+    ...(init.signal ? [init.signal] : []),
+  ]);
   try {
     const response = await fetch(url, {
       ...init,
@@ -460,6 +490,32 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
     let changed = false;
     let product: ProductRow | null = null;
 
+    async function unusedSize(
+      candidate: ProductRow,
+      db: TypedSupabaseClient,
+      links: LinkRow[],
+    ) {
+      const variants = await db
+        .from("product_variants")
+        .select("id, size_label")
+        .eq("product_id", candidate.id)
+        .eq("tenant_id", tenantId);
+      if (variants.error) throw variants.error;
+      return !variants.data?.some(
+        (variant) =>
+          family.variants.some((remote) => remote.sizeLabel === variant.size_label) &&
+          !family.variants.some(
+            (remote) =>
+              variant.id === importIdentity(tenantId, "variant", remote.productId),
+          ) &&
+          !links.some(
+            (link) =>
+              link.variant_id === variant.id &&
+              link.lightspeed_product_id &&
+              allRemoteIds.has(link.lightspeed_product_id),
+          ),
+      );
+    }
     if (candidateIds.length) {
       const result = await this.supabase
         .from("products")
@@ -468,32 +524,36 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
         .eq("condition", family.condition)
         .eq("tenant_id", tenantId);
       if (result.error) throw result.error;
-      const candidates = result.data ?? [];
-      for (const candidate of candidates.sort(
+      for (const candidate of (result.data ?? []).sort(
         (a, b) => Number(b.is_active) - Number(a.is_active),
       )) {
-        const variants = await this.supabase
-          .from("product_variants")
-          .select("id, size_label")
-          .eq("product_id", candidate.id)
-          .eq("tenant_id", tenantId);
-        if (variants.error) throw variants.error;
-        // Retired and unavailable variants keep their history and occupied sizes.
-        const blocked = variants.data?.some(
-          (variant) =>
-            family.variants.some((remote) => remote.sizeLabel === variant.size_label) &&
-            !this.links!.some(
-              (link) =>
-                link.variant_id === variant.id &&
-                link.lightspeed_product_id &&
-                allRemoteIds.has(link.lightspeed_product_id),
-            ),
-        );
-        if (!blocked) {
+        if (await unusedSize(candidate, this.supabase, this.links!)) {
           product = candidate;
           break;
         }
       }
+    }
+    // Stable identities recover inserts committed before the provider link was saved.
+    // Occupied historical sizes may require a second listing, also with a repeatable ID.
+    let newProductId = "";
+    for (let generation = 0; !product; generation++) {
+      newProductId = importIdentity(
+        tenantId,
+        "product",
+        family.familyId,
+        family.condition,
+        String(generation),
+      );
+      const recovered = await this.supabase
+        .from("products")
+        .select("*")
+        .eq("id", newProductId)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (recovered.error) throw recovered.error;
+      if (!recovered.data) break;
+      if (await unusedSize(recovered.data, this.supabase, this.links!))
+        product = recovered.data;
     }
 
     const parsed = await this.parser.parseTitle({
@@ -527,6 +587,7 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
       const result = await this.supabase
         .from("products")
         .insert({
+          id: newProductId,
           tenant_id: tenantId,
           ...productValues,
           product_created_at: new Date().toISOString(),
@@ -585,14 +646,14 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
         throw new Error(`lightspeed_sku_identity_conflict:${remote.sku}`);
       }
 
-      let local = linked?.variant_id
-        ? localVariants.find((variant) => variant.id === linked.variant_id)
-        : undefined;
-      if (!local && linked?.variant_id) {
+      const variantId =
+        linked?.variant_id ?? importIdentity(tenantId, "variant", remote.productId);
+      let local = localVariants.find((variant) => variant.id === variantId);
+      if (!local) {
         const existing = await this.supabase
           .from("product_variants")
           .select("*")
-          .eq("id", linked.variant_id)
+          .eq("id", variantId)
           .eq("tenant_id", tenantId)
           .maybeSingle();
         if (existing.error) throw existing.error;
@@ -614,7 +675,11 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
       if (!local) {
         const result = await this.supabase
           .from("product_variants")
-          .insert({ tenant_id: tenantId, ...variantValues })
+          .insert({
+            id: importIdentity(tenantId, "variant", remote.productId),
+            tenant_id: tenantId,
+            ...variantValues,
+          })
           .select()
           .single();
         if (result.error) throw result.error;
@@ -965,4 +1030,15 @@ function matches<T extends object>(row: T, expected: Partial<T>): boolean {
   return Object.entries(expected).every(([key, value]) =>
     Object.is(row[key as keyof T], value),
   );
+}
+
+function importIdentity(...parts: string[]): string {
+  const bytes = createHash("sha256")
+    .update(JSON.stringify(["lightspeed", ...parts]))
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x80;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

@@ -4,8 +4,7 @@ import type { AdminSupabaseClient } from "@/lib/supabase/service-role";
 import { createSupabaseAdminClient } from "@/lib/supabase/service-role";
 import type { Json, Tables } from "@/types/db/database.types";
 
-import { reconcileCatalog } from "./reconciliation";
-import { loadLightspeedFamilies, SupabaseCatalogReconciliationStore } from "./server";
+import { enqueueSync } from "./sync-jobs";
 import {
   isLightspeedEventOutOfOrder,
   parseLightspeedWebhook,
@@ -106,6 +105,28 @@ export async function processLightspeedWebhookEvent(
   if (!event.tenant_id) throw new Error("webhook_tenant_missing");
   const tenantId = event.tenant_id;
 
+  const linkedRunId = webhookRunId(event);
+  if (event.state === "processing" && linkedRunId) {
+    const run = await db
+      .from("lightspeed_sync_runs")
+      .select("status, summary")
+      .eq("id", linkedRunId)
+      .eq("tenant_id", tenantId)
+      .single();
+    if (run.error) throw run.error;
+    if (run.data.status === "running") return event;
+    const summary = run.data.summary as { error?: string };
+    return updateEvent(db, event.id, {
+      state: run.data.status === "success" ? "succeeded" : "needs_attention",
+      processed_at: new Date().toISOString(),
+      lease_until: null,
+      last_error:
+        run.data.status === "success"
+          ? null
+          : (summary.error ?? `Sync ${run.data.status}. Review run ${linkedRunId}.`),
+    });
+  }
+
   if (event.resource_version !== null && event.resource_id) {
     const newer = await db
       .from("lightspeed_webhook_events")
@@ -150,23 +171,27 @@ export async function processLightspeedWebhookEvent(
   if (!claim.data) return event;
   event = claim.data;
   try {
-    const summary = await reconcileCatalog({
-      tenantId,
-      userId: null,
-      loadFamilies: loadLightspeedFamilies,
-      store: new SupabaseCatalogReconciliationStore(db),
-    });
-    if (summary.failed > 0) {
-      throw new Error(`reconciliation_partial_failure:${summary.failed}`);
-    }
-    return updateEvent(db, event.id, {
-      state: "succeeded",
-      processed_at: new Date().toISOString(),
+    const run = await enqueueSync(tenantId, null, db, event.id);
+    return {
+      ...event,
+      state: "processing",
       lease_until: null,
-      outcome: { provider_event_id: event.event_id, summary: { ...summary } },
+      outcome: { run_id: run.id },
       last_error: null,
-    });
+    };
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "lightspeed_reconciliation_already_running"
+    ) {
+      return updateEvent(db, event.id, {
+        state: "pending",
+        attempts: attempts - 1,
+        lease_until: null,
+        outcome: null,
+        next_attempt_at: new Date(Date.now() + 60_000).toISOString(),
+      });
+    }
     const terminal = attempts >= 5;
     return updateEvent(db, event.id, {
       state: terminal ? "needs_attention" : "retry_wait",
@@ -177,6 +202,16 @@ export async function processLightspeedWebhookEvent(
       last_error: safeError(error),
     });
   }
+}
+
+export function webhookRunId(event: Pick<WebhookRow, "outcome">): string | null {
+  const outcome = event.outcome;
+  return outcome &&
+    typeof outcome === "object" &&
+    !Array.isArray(outcome) &&
+    typeof outcome.run_id === "string"
+    ? outcome.run_id
+    : null;
 }
 
 async function findEvent(db: AdminSupabaseClient, tenantId: string, eventId: string) {

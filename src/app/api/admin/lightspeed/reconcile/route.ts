@@ -1,12 +1,15 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { z } from "zod";
 
 import { AuthError, requireAdminApi } from "@/lib/auth/session";
 import {
-  loadLightspeedFamilies,
-  SupabaseCatalogReconciliationStore,
-} from "@/modules/lightspeed/server";
+  cancelSync,
+  enqueueSync,
+  publicSyncRun,
+  recoverLegacySyncs,
+  runSyncWorker,
+} from "@/modules/lightspeed/sync-jobs";
 import {
-  reconcileCatalog,
   allItemsFailed,
   groupFailures,
   type ReconciliationSummary,
@@ -15,6 +18,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/service-role";
 import { logError } from "@/lib/utils/log";
 
+export const maxDuration = 300;
+
 export async function GET() {
   try {
     const session = await requireAdminApi();
@@ -22,10 +27,11 @@ export async function GET() {
     if (!tenantId) {
       return NextResponse.json({ error: "Admin tenant is required" }, { status: 400 });
     }
+    await recoverLegacySyncs(createSupabaseAdminClient(), tenantId);
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
       .from("lightspeed_sync_runs")
-      .select("id, status, summary, created_at, completed_at")
+      .select("id, status, summary, created_at, completed_at, cancel_requested_at")
       .eq("tenant_id", tenantId)
       .not("summary", "cs", '{"scope":"family"}')
       .order("created_at", { ascending: false })
@@ -73,21 +79,34 @@ export async function POST() {
     if (!tenantId) {
       return NextResponse.json({ error: "Admin tenant is required" }, { status: 400 });
     }
-    // The authorized job must survive browser-session loss during a long import.
-    const supabase = createSupabaseAdminClient();
-    const summary = await reconcileCatalog({
-      tenantId,
-      userId: session.user.id,
-      loadFamilies: loadLightspeedFamilies,
-      store: new SupabaseCatalogReconciliationStore(supabase),
-    });
+    const run = await enqueueSync(tenantId, session.user.id);
+    after(() => runSyncWorker(run.id));
     return NextResponse.json(
-      { summary, ...(allItemsFailed(summary) ? { error: summary.error } : {}) },
+      { run: publicSyncRun(run) },
       {
-        status: allItemsFailed(summary) ? 422 : 200,
+        status: 202,
         headers: { "Cache-Control": "no-store" },
       },
     );
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const session = await requireAdminApi();
+    const tenantId = session.profile?.tenant_id;
+    if (!tenantId)
+      return NextResponse.json({ error: "Admin tenant is required" }, { status: 400 });
+    const parsed = z
+      .object({ runId: z.uuid() })
+      .safeParse(await request.json().catch(() => null));
+    if (!parsed.success)
+      return NextResponse.json({ error: "A valid run ID is required" }, { status: 400 });
+    const run = await cancelSync(parsed.data.runId, tenantId);
+    if (!run) return NextResponse.json({ error: "Run not found" }, { status: 404 });
+    return NextResponse.json({ run }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return errorResponse(error);
   }
@@ -97,6 +116,15 @@ function errorResponse(error: unknown) {
   logError(error, { layer: "api", endpoint: "/api/admin/lightspeed/reconcile" });
   if (error instanceof AuthError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+  if (error instanceof Error && error.message === "lightspeed_worker_not_configured") {
+    return NextResponse.json(
+      {
+        error:
+          "Background sync is not configured. Set CRON_SECRET in this Vercel project and redeploy.",
+      },
+      { status: 503 },
+    );
   }
   if (
     error instanceof Error &&

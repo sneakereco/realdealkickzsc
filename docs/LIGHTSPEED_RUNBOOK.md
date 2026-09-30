@@ -11,11 +11,56 @@
 
 ## Manual reconciliation
 
-Use **Run Lightspeed sync** on `/admin/dashboard`. The server rejects overlapping runs with HTTP 409. A completed run records `created`, `updated`, `retired`, `skipped`, and `failed` counts:
+Use **Sync from Lightspeed** on `/admin/dashboard`. The request returns HTTP 202 with a run ID;
+it does not wait for the entire catalog. The server rejects overlapping runs with HTTP 409.
+The worker checkpoints every provider page and family. Subsequent scheduled invocations resume
+the saved position even if the browser closes. Existing family validation and stock rules apply.
+A completed run records `created`, `updated`, `retired`, `skipped`, and `failed` counts:
 
 - `success`: the provider scan and every family completed;
 - `partial_failure`: the scan completed but one or more families failed independently;
-- `failed`: the provider scan or retirement phase failed.
+- `failed`: the provider scan/retirement failed, every family failed, or repeated worker interruptions exhausted recovery;
+- `cancelled`: an admin cancelled the run; already saved catalog changes remain.
+
+**Cancel sync** requests cancellation on the server. The current family may finish before the
+worker acknowledges it. The tenant stays locked against another sync until that worker exits
+or its lease expires. Cancellation during download is checked again before catalog writes.
+It does not roll back earlier families. Missing-family retirement only begins after the full
+listing and family application phases have completed.
+
+Worker invocations stop taking new work after 180 seconds, abort provider/database work by
+240 seconds, and have a Vercel maximum duration of 300 seconds. A six-minute database lease
+prevents overlapping workers. A killed worker resumes its last checkpoint after that lease
+expires; three consecutive interruptions without saving progress mark the run failed.
+Runs from the old non-resumable implementation are marked failed after six minutes without
+progress, on the next status read, enqueue, or cron tick. Start a new sync for those legacy runs.
+
+### Deployment requirement
+
+Apply `20260930220000_resumable_lightspeed_sync.sql` before deploying the application.
+Configure a separate random `CRON_SECRET` (at least 32 bytes) in each Vercel project's
+**Production** environment, and retain it in that environment's Doppler config. Both the
+staging and production workflows deploy their respective Vercel projects with `--prod`.
+Never print or commit the secret. Without it, hosted manual starts return 503 instead of
+creating jobs that cannot continue.
+
+`vercel.json` schedules `/api/cron/lightspeed` every minute. Vercel supplies the secret as a
+Bearer authorization header; the route rejects missing/mismatched credentials. See
+[Vercel cron security](https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs).
+Verify the job appears under **Project → Settings → Cron Jobs** after deployment and is enabled.
+The worker bypasses browser middleware only on this exact path and authenticates in the route.
+No extra queue service or package is required. Local Next.js does not run Vercel cron schedules;
+invoke this route with a local CRON_SECRET when testing continuation beyond the first batch.
+
+### Finding failures
+
+The dashboard retains the failure reason, per-family errors, timing, cancellation state, and
+run ID across reloads. Query `lightspeed_sync_runs` for its saved summary/checkpoint, and
+`lightspeed_sync_run_items` for family evidence. In the relevant Vercel project's **Logs**,
+filter `/api/admin/lightspeed/reconcile`, `/api/cron/lightspeed`, or `/api/webhooks/lightspeed`.
+Application worker errors include `runId`, phase, and current family ID. Platform termination
+may only log the request path and `FUNCTION_INVOCATION_TIMEOUT`; correlate its timestamp with
+the run's saved progress. Non-JSON platform responses are shown as HTTP errors in the UI.
 
 For a partial failure, inspect the run's per-item evidence, correct the provider data or
 credential/configuration cause, then run reconciliation again. For a failed scan, do not edit the
@@ -29,8 +74,11 @@ processed after the response. Duplicate IDs are idempotent and older resource ve
 recorded as successful, skipped events.
 
 Event states are `pending`, `processing`, `succeeded`, `retry_wait`, and `needs_attention`.
-Processing uses a 10-minute lease. Failures back off exponentially up to one hour; the fifth
-failed attempt becomes `needs_attention`.
+Event enqueue uses a 10-minute claim lease. Once enqueued, `outcome.run_id` points to the same
+durable worker used by manual sync. Cron checks that run before marking the event successful.
+Cancelled, failed, or partially failed runs become `needs_attention` instead of automatically
+undoing an admin cancellation. Enqueue failures back off up to one hour; the fifth failed
+attempt becomes `needs_attention`. An occupied tenant waits without consuming an attempt.
 
 For `retry_wait` or `needs_attention`:
 
@@ -38,7 +86,7 @@ For `retry_wait` or `needs_attention`:
 2. Resolve the root cause: credentials/configuration, provider availability, invalid provider
    data, database migration, or deployment mismatch.
 3. Use **Retry** on the dashboard. The tenant-scoped endpoint reuses the same idempotent processor.
-4. Confirm the event becomes `succeeded` and its outcome contains a reconciliation summary.
+4. Confirm the event becomes `succeeded` and its `outcome.run_id` identifies a successful run.
 5. Run a manual reconciliation if delivery gaps or several related events are suspected.
 
 ## Credential rotation

@@ -4,11 +4,14 @@ import {
   captureLightspeedWebhook,
   LightspeedWebhookError,
   processLightspeedWebhookEvent,
+  webhookRunId,
 } from "@/modules/lightspeed/webhook-server";
 import { logError } from "@/lib/utils/log";
+import { runSyncWorker } from "@/modules/lightspeed/sync-jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -25,7 +28,9 @@ export async function POST(request: Request): Promise<Response> {
     ) {
       after(async () => {
         try {
-          await processLightspeedWebhookEvent(captured.row.id);
+          const event = await processLightspeedWebhookEvent(captured.row.id);
+          const runId = webhookRunId(event);
+          if (runId && event.state === "processing") await runSyncWorker(runId);
         } catch (error) {
           logError(error, {
             layer: "api",

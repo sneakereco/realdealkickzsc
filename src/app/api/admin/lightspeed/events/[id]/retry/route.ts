@@ -1,9 +1,15 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { AuthError, requireAdminApi } from "@/lib/auth/session";
-import { processLightspeedWebhookEvent } from "@/modules/lightspeed/webhook-server";
+import {
+  processLightspeedWebhookEvent,
+  webhookRunId,
+} from "@/modules/lightspeed/webhook-server";
+import { runSyncWorker } from "@/modules/lightspeed/sync-jobs";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { logError } from "@/lib/utils/log";
+
+export const maxDuration = 300;
 
 export async function POST(
   _request: Request,
@@ -28,6 +34,8 @@ export async function POST(
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
     const event = await processLightspeedWebhookEvent(id);
+    const runId = webhookRunId(event);
+    if (runId && event.state === "processing") after(() => runSyncWorker(runId));
     return NextResponse.json({ event });
   } catch (error) {
     logError(error, {

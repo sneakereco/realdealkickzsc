@@ -137,7 +137,14 @@ export interface CanonicalLightspeedFamily {
 }
 
 export type ReconciliationProgress = {
-  phase: "listing" | "downloading" | "applying" | "retiring" | "completed" | "failed";
+  phase:
+    | "listing"
+    | "downloading"
+    | "applying"
+    | "retiring"
+    | "completed"
+    | "failed"
+    | "cancelled";
   completed: number;
   total: number | null;
   updated_at: string;
@@ -467,6 +474,50 @@ export function normalizeLightspeedFamily(
   });
 }
 
+// Shared by full-catalog batches and the existing reconciliation tests/callers.
+export async function reconcileFamily(
+  raw: unknown,
+  runId: string,
+  tenantId: string,
+  store: CatalogReconciliationStore,
+  summary: ReconciliationSummary,
+): Promise<boolean> {
+  const entityKey = rawFamilyId(raw);
+  let keep = true;
+  try {
+    const corrections = await store.getCorrections?.(tenantId, entityKey);
+    const stock = corrections?.exclude ? null : inspectLightspeedStock(raw);
+    const stockUpdated =
+      stock &&
+      (await store.updateUnavailableStock?.(
+        tenantId,
+        entityKey,
+        stock.unavailableProductIds,
+        stock.remoteProductIds,
+      ));
+    const family = normalizeLightspeedFamily(raw, corrections);
+    if (!family.length) {
+      keep = !!stock?.stockOnly;
+      await store.resolveReview?.(tenantId, entityKey);
+      summary[stockUpdated ? "updated" : "skipped"] += 1;
+    } else {
+      const action = await store.applyFamily(
+        runId,
+        tenantId,
+        family,
+        stock?.unavailableProductIds,
+      );
+      summary[action === "skipped" && stockUpdated ? "updated" : action] += 1;
+    }
+  } catch (error) {
+    summary.failed += 1;
+    const reason = safeError(error);
+    addFailure((summary.failure_groups ??= []), entityKey, reason);
+    await store.recordFailure(runId, entityKey, reason, raw);
+  }
+  return keep;
+}
+
 export async function reconcileCatalog(input: {
   tenantId: string;
   userId: string | null;
@@ -503,42 +554,13 @@ export async function reconcileCatalog(input: {
     await report({ phase: "applying", completed: 0, total: remoteFamilies.length });
 
     const seenFamilyIds = new Set<string>();
-    const excludedFamilyIds = new Set<string>();
     for (const raw of remoteFamilies) {
       const entityKey = rawFamilyId(raw);
       if (entityKey !== "unknown") {
         seenFamilyIds.add(entityKey);
       }
-      try {
-        const corrections = await input.store.getCorrections?.(input.tenantId, entityKey);
-        const stock = corrections?.exclude ? null : inspectLightspeedStock(raw);
-        const stockUpdated =
-          stock &&
-          (await input.store.updateUnavailableStock?.(
-            input.tenantId,
-            entityKey,
-            stock.unavailableProductIds,
-            stock.remoteProductIds,
-          ));
-        const family = normalizeLightspeedFamily(raw, corrections);
-        if (!family.length) {
-          if (!stock?.stockOnly) seenFamilyIds.delete(entityKey);
-          excludedFamilyIds.add(entityKey);
-          summary[stockUpdated ? "updated" : "skipped"] += 1;
-        } else {
-          const action = await input.store.applyFamily(
-            runId,
-            input.tenantId,
-            family,
-            stock?.unavailableProductIds,
-          );
-          summary[action === "skipped" && stockUpdated ? "updated" : action] += 1;
-        }
-      } catch (error) {
-        summary.failed += 1;
-        const reason = safeError(error);
-        addFailure((summary.failure_groups ??= []), entityKey, reason);
-        await input.store.recordFailure(runId, entityKey, reason, raw);
+      if (!(await reconcileFamily(raw, runId, input.tenantId, input.store, summary))) {
+        seenFamilyIds.delete(entityKey);
       }
       await report({
         phase: "applying",
@@ -553,8 +575,6 @@ export async function reconcileCatalog(input: {
       input.tenantId,
       seenFamilyIds,
     );
-    for (const familyId of excludedFamilyIds)
-      await input.store.resolveReview?.(input.tenantId, familyId);
     summary.progress = {
       phase: allItemsFailed(summary) ? "failed" : "completed",
       completed: remoteFamilies.length,
