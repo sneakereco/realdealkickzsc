@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/service-role";
 import { z } from "zod";
 import { AuthError, requireAdminApi } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -10,6 +11,7 @@ import {
   describeLightspeedFamily,
   familyCorrectionsSchema,
   normalizeLightspeedFamily,
+  inspectLightspeedStock,
   safeError,
   type ReconciliationSummary,
 } from "@/modules/lightspeed/reconciliation";
@@ -118,12 +120,12 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { tenantId, db, session } = await context();
+    const { tenantId, db: sessionDb, session } = await context();
     const { familyId, corrections } = z
       .object({ familyId: z.string().uuid(), corrections: familyCorrectionsSchema })
       .strict()
       .parse(await request.json());
-    const known = await db
+    const known = await sessionDb
       .from("lightspeed_import_reviews")
       .select("family_id")
       .eq("tenant_id", tenantId)
@@ -131,6 +133,8 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (known.error) throw known.error;
     if (!known.data) return reply({ error: "Review not found" }, 404);
+    // Continue only after the session has authorized this tenant's review.
+    const db = createSupabaseAdminClient();
     const store = new SupabaseCatalogReconciliationStore(db);
     const runId = await store.startRun(tenantId, session.user.id, "family");
     const summary: ReconciliationSummary = {
@@ -169,16 +173,33 @@ export async function POST(request: Request) {
         .eq("family_id", familyId);
       if (result.error) throw result.error;
       saved = true;
+      const stock = corrections.exclude ? null : inspectLightspeedStock(raw);
+      const stockUpdated =
+        stock &&
+        (await store.updateUnavailableStock(
+          tenantId,
+          familyId,
+          stock.unavailableProductIds,
+          stock.remoteProductIds,
+        ));
       const families = normalizeLightspeedFamily(raw, corrections);
-      if (families.length) summary[await store.applyFamily(runId, tenantId, families)]++;
-      else {
-        summary.retired = await store.retireMissingFamilies(
+      if (families.length) {
+        const action = await store.applyFamily(
           runId,
           tenantId,
-          new Set(),
-          familyId,
+          families,
+          stock?.unavailableProductIds,
         );
-        summary.skipped++;
+        summary[action === "skipped" && stockUpdated ? "updated" : action]++;
+      } else {
+        if (!stock?.stockOnly)
+          summary.retired = await store.retireMissingFamilies(
+            runId,
+            tenantId,
+            new Set(),
+            familyId,
+          );
+        summary[stockUpdated ? "updated" : "skipped"]++;
         await store.resolveReview(tenantId, familyId);
       }
       await store.finishRun(runId, "success", summary);
@@ -186,7 +207,9 @@ export async function POST(request: Request) {
         resolved: true,
         message: corrections.exclude
           ? "Excluded from website imports."
-          : "Saved and imported successfully.",
+          : stock?.stockOnly
+            ? "Imported into inventory with zero sellable stock and hidden from the storefront."
+            : "Saved and imported successfully.",
       });
     } catch (error) {
       summary.failed = 1;

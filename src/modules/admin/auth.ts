@@ -74,6 +74,27 @@ export class AdminAuthService {
   }
 
   async enrollTotp() {
+    const { data: factors, error } = await this.supabase.auth.mfa.listFactors();
+    if (error) {
+      return { data: null, error };
+    }
+
+    // Enrollment can be interrupted before verification; only replace our pending factor.
+    for (const factor of factors.all) {
+      if (
+        factor.factor_type === "totp" &&
+        factor.friendly_name === "Admin TOTP" &&
+        factor.status === "unverified"
+      ) {
+        const { error: cleanupError } = await this.supabase.auth.mfa.unenroll({
+          factorId: factor.id,
+        });
+        if (cleanupError) {
+          return { data: null, error: cleanupError };
+        }
+      }
+    }
+
     return this.supabase.auth.mfa.enroll({
       factorType: "totp",
       friendlyName: "Admin TOTP",

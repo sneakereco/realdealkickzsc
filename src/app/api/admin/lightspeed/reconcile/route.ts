@@ -12,6 +12,7 @@ import {
   type ReconciliationSummary,
 } from "@/modules/lightspeed/reconciliation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/service-role";
 import { logError } from "@/lib/utils/log";
 
 export async function GET() {
@@ -72,7 +73,8 @@ export async function POST() {
     if (!tenantId) {
       return NextResponse.json({ error: "Admin tenant is required" }, { status: 400 });
     }
-    const supabase = await createSupabaseServerClient();
+    // The authorized job must survive browser-session loss during a long import.
+    const supabase = createSupabaseAdminClient();
     const summary = await reconcileCatalog({
       tenantId,
       userId: session.user.id,

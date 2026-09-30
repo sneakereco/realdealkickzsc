@@ -3,12 +3,156 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { TypedSupabaseClient } from "@/lib/supabase/server";
 vi.mock("server-only", () => ({}));
 vi.mock("@/config/env", () => ({ env: {} }));
+vi.mock("@/lib/utils/log", () => ({ logError: vi.fn() }));
 import { SupabaseCatalogReconciliationStore } from "@/modules/lightspeed/server";
-import { normalizeLightspeedFamily } from "@/modules/lightspeed/reconciliation";
+import {
+  normalizeLightspeedFamily,
+  reconcileCatalog,
+} from "@/modules/lightspeed/reconciliation";
 import { ProductTitleParserService } from "@/services/product-title-parser-service";
 import { parseTitleWithCatalog } from "@/services/product-title-parser";
 
 afterEach(() => vi.restoreAllMocks());
+
+test("run status writes reject missing rows rather than silently succeeding", async () => {
+  const { db } = database();
+  const store = new SupabaseCatalogReconciliationStore(db);
+  const summary = { created: 0, updated: 0, skipped: 0, retired: 0, failed: 0 };
+  await expect(store.updateProgress("missing", summary)).rejects.toThrow();
+  await expect(store.finishRun("missing", "failed", summary)).rejects.toThrow();
+  const id = await store.startRun("tenant-1", null);
+  await expect(store.finishRun(id, "success", summary)).resolves.toBeUndefined();
+});
+
+test.each(["new", "used"])(
+  "keeps an unavailable %s occupant hidden when a stocked variant moves condition",
+  async (otherCondition) => {
+    vi.spyOn(ProductTitleParserService.prototype, "parseTitle").mockImplementation(
+      (input) =>
+        Promise.resolve(
+          parseTitleWithCatalog(input, { brandAliases: [], modelAliasesByBrand: {} }),
+        ),
+    );
+    const raw = JSON.parse(
+      await readFile(
+        new URL("../fixtures/lightspeed/manual-reconciliation.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    raw.data.products.push({
+      ...raw.data.products[0],
+      id: "other",
+      variant_attributes: [otherCondition, otherCondition === "new" ? "11" : "10"],
+      codes: [{ type: "CUSTOM", code: "OTHER" }],
+    });
+    raw.inventory.push({ product_id: "other", current_inventory_level: 1 });
+    const { db, tables } = database();
+    const sync = () =>
+      reconcileCatalog({
+        tenantId: "tenant-1",
+        userId: null,
+        loadFamilies: () => Promise.resolve([raw]),
+        store: new SupabaseCatalogReconciliationStore(db),
+      });
+    await sync();
+    const otherLink = tables.lightspeed_product_links.find(
+      (l) => l.lightspeed_product_id === "other",
+    )!;
+    raw.inventory[1].current_inventory_level = 0;
+    raw.data.products[0].variant_attributes[0] = "used";
+    raw.data.products[1].variant_attributes[0] = "new";
+    expect(await sync()).toMatchObject({ failed: 0 });
+    const unavailableVariant = tables.product_variants.find(
+      (v) => v.id === otherLink.variant_id,
+    )!;
+    expect(
+      tables.products.find((p) => p.id === unavailableVariant.product_id),
+    ).toMatchObject({
+      condition: "new",
+      is_active: true,
+      is_out_of_stock: true,
+      archived_at: null,
+    });
+    expect(
+      tables.product_variants.find((v) => v.id === otherLink.variant_id)?.stock,
+    ).toBe(0);
+    expect(tables.product_variants).toHaveLength(2);
+    const productIds = tables.products.map((p) => p.id);
+    const variantHomes = tables.product_variants.map((v) => [v.id, v.product_id]);
+    expect(await sync()).toMatchObject({ failed: 0, skipped: 1, created: 0, updated: 0 });
+    expect(tables.products.map((p) => p.id)).toEqual(productIds);
+    expect(tables.product_variants.map((v) => [v.id, v.product_id])).toEqual(
+      variantHomes,
+    );
+  },
+);
+
+test("imports new empty variants, preserves identities, and restores visibility on restock", async () => {
+  vi.spyOn(ProductTitleParserService.prototype, "parseTitle").mockImplementation(
+    (input) =>
+      Promise.resolve(
+        parseTitleWithCatalog(input, {
+          brandAliases: [],
+          modelAliasesByBrand: {},
+        }),
+      ),
+  );
+  const raw = JSON.parse(
+    await readFile(
+      new URL("../fixtures/lightspeed/manual-reconciliation.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const { db, tables } = database();
+  const sync = () =>
+    reconcileCatalog({
+      tenantId: "tenant-1",
+      userId: null,
+      loadFamilies: () => Promise.resolve([raw]),
+      store: new SupabaseCatalogReconciliationStore(db),
+    });
+  await sync();
+  const productId = tables.products[0].id;
+  const variantId = tables.product_variants[0].id;
+  raw.data.products.push({
+    ...raw.data.products[0],
+    id: "later",
+    variant_attributes: ["used", "11"],
+    codes: [{ type: "CUSTOM", code: "LATER" }],
+  });
+  raw.inventory.push({ product_id: "later", current_inventory_level: 0 });
+  await sync();
+  expect(tables.product_variants).toHaveLength(2);
+  expect(tables.products.find((p) => p.condition === "used")?.is_out_of_stock).toBe(true);
+  raw.inventory[0].current_inventory_level = -2;
+  raw.data.category_id = null;
+  expect(await sync()).toMatchObject({ failed: 1, retired: 0 });
+  expect(tables.products[0]).toMatchObject({
+    id: productId,
+    is_active: true,
+    is_out_of_stock: true,
+    archived_at: null,
+  });
+  expect(tables.product_variants[0]).toMatchObject({ id: variantId, stock: 0 });
+  expect(tables.lightspeed_product_links[0]).toMatchObject({
+    sync_state: "linked",
+    tombstoned_at: null,
+  });
+  raw.data.category_id = "category-1";
+  raw.inventory[1].current_inventory_level = 1;
+  await sync();
+  expect(tables.products.find((p) => p.id === productId)).toMatchObject({
+    is_active: true,
+    is_out_of_stock: true,
+    archived_at: null,
+  });
+  expect(tables.product_variants).toHaveLength(2);
+  raw.inventory[0].current_inventory_level = 3;
+  await sync();
+  expect(tables.product_variants.find((v) => v.id === variantId)?.stock).toBe(3);
+  expect(tables.products.find((p) => p.id === productId)?.is_out_of_stock).toBe(false);
+  expect(tables.product_variants).toHaveLength(2);
+});
 
 // A stateful database double: exercise real importer/tag helpers over repeated writes.
 function database() {
@@ -54,6 +198,14 @@ function database() {
         select: () => query,
         eq: (key: string, value: unknown) => {
           filters.push((row) => row[key] === value);
+          return query;
+        },
+        gt: (key: string, value: number) => {
+          filters.push((row) => Number(row[key]) > value);
+          return query;
+        },
+        limit: (count: number) => {
+          end = count;
           return query;
         },
         in: (key: string, value: unknown[]) => {
@@ -113,6 +265,7 @@ function database() {
               const row = {
                 id: `id-${++sequence}`,
                 excluded_auto_tag_keys: [],
+                ...(table === "lightspeed_import_reviews" ? { corrections: {} } : {}),
                 ...value,
               };
               tables[table].push(row);

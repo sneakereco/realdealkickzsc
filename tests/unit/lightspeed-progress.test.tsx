@@ -71,3 +71,16 @@ test("shows grouped error counts, readable causes, and example IDs", () => {
   expect(html).toContain("data.brand_id: Expected string");
   expect(html).toContain("Example family IDs: family-1, family-2");
 });
+
+test.each(["success", "partial_failure", "failed"])(
+  "keeps %s timing unchanged after completion",
+  (status) => {
+    const finished = { ...run, status, completed_at: "2026-09-29T17:10:00Z" };
+    const html = renderToStaticMarkup(<SyncProgress run={finished} now={now} />);
+    expect(html).toBe(
+      renderToStaticMarkup(<SyncProgress run={finished} now={now + 86400000} />),
+    );
+    expect(html).not.toContain("Last activity:");
+    expect(html).toContain('dateTime="2026-09-29T17:10:00Z"');
+  },
+);

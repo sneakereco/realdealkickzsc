@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   from: vi.fn(),
   reconcile: vi.fn(),
+  admin: vi.fn(),
+  store: vi.fn(),
 }));
 vi.mock("@/lib/auth/session", () => ({
   AuthError: class extends Error {},
@@ -12,9 +14,16 @@ vi.mock("@/lib/auth/session", () => ({
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: () => Promise.resolve({ from: mocks.from }),
 }));
+vi.mock("@/lib/supabase/service-role", () => ({
+  createSupabaseAdminClient: mocks.admin,
+}));
 vi.mock("@/modules/lightspeed/server", () => ({
   loadLightspeedFamilies: vi.fn(),
-  SupabaseCatalogReconciliationStore: class {},
+  SupabaseCatalogReconciliationStore: class {
+    constructor(db: unknown) {
+      mocks.store(db);
+    }
+  },
 }));
 vi.mock("@/lib/utils/log", () => ({ logError: vi.fn() }));
 vi.mock("@/modules/lightspeed/reconciliation", async (original) => ({
@@ -30,6 +39,28 @@ beforeEach(() => {
     user: { id: "admin" },
     profile: { tenant_id: "tenant-1" },
   });
+});
+
+test("executes an authorized sync with server credentials independent of session loss", async () => {
+  const db = { from: vi.fn() };
+  mocks.admin.mockReturnValue(db);
+  mocks.reconcile.mockImplementationOnce((options) => {
+    mocks.auth.mockRejectedValue(new Error("Session not found"));
+    expect(options).toMatchObject({ tenantId: "tenant-1", userId: "admin" });
+    return Promise.resolve({ failed: 0, created: 1, updated: 0, skipped: 0 });
+  });
+  expect((await POST()).status).toBe(200);
+  expect(mocks.store).toHaveBeenCalledWith(db);
+  expect(mocks.auth).toHaveBeenCalledTimes(1);
+});
+
+test("does not create a privileged client without admin authorization and a tenant", async () => {
+  mocks.auth.mockRejectedValueOnce(new Error("unauthenticated"));
+  await POST();
+  mocks.auth.mockResolvedValueOnce({ user: { id: "admin" }, profile: {} });
+  expect((await POST()).status).toBe(400);
+  expect(mocks.admin).not.toHaveBeenCalled();
+  expect(mocks.reconcile).not.toHaveBeenCalled();
 });
 
 test("loads every page of legacy failures scoped to the authenticated tenant and run", async () => {

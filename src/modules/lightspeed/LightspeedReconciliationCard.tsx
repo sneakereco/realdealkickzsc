@@ -59,9 +59,10 @@ export function LightspeedReconciliationCard() {
   }, [running]);
 
   useEffect(() => {
+    if (run?.status !== "running") return;
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [run?.status]);
 
   useEffect(() => {
     void fetch("/api/admin/lightspeed/events")
@@ -235,17 +236,16 @@ export function SyncErrors({ groups }: { groups: FailureGroup[] }) {
 
 export function SyncProgress({ run, now }: { run: Run; now: number }) {
   const progress = run.summary?.progress;
+  const isRunning = run.status === "running";
+  const end = run.completed_at ?? progress?.updated_at ?? run.created_at;
   const elapsed = Math.max(
     0,
-    Math.floor(
-      ((run.completed_at ? Date.parse(run.completed_at) : now) -
-        Date.parse(run.created_at)) /
-        1000,
-    ),
+    Math.floor(((isRunning ? now : Date.parse(end)) - Date.parse(run.created_at)) / 1000),
   );
-  const age = progress
-    ? Math.max(0, Math.floor((now - Date.parse(progress.updated_at)) / 1000))
-    : null;
+  const age =
+    isRunning && progress
+      ? Math.max(0, Math.floor((now - Date.parse(progress.updated_at)) / 1000))
+      : null;
   const labels = {
     listing: "Discovering product records",
     downloading: "Downloading families and inventory",
@@ -281,6 +281,14 @@ export function SyncProgress({ run, now }: { run: Run; now: number }) {
         Elapsed: {Math.floor(elapsed / 60)}m {elapsed % 60}s
         {age === null ? "" : ` · Last activity: ${age}s ago`}
       </p>
+      {!isRunning && run.completed_at && (
+        <p>
+          {run.status === "failed" ? "Stopped" : "Completed"}:{" "}
+          <time dateTime={run.completed_at}>
+            {new Date(run.completed_at).toLocaleString()}
+          </time>
+        </p>
+      )}
       {run.status === "running" && age !== null && age >= 60 ? (
         <p role="status">
           No progress reported for at least 60 seconds. This run may be stalled;

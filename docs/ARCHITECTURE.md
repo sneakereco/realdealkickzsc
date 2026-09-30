@@ -52,7 +52,6 @@ behavior remain owned by the Next.js entrypoints.
 | `/cart`, `/checkout`                           | Catalog-only purchase guidance; no payment execution             |
 | `/admin/dashboard`                             | Sync summary, manual reconciliation, latest webhook status/retry |
 | `/admin/inventory`                             | Read-only catalog and export controls                            |
-| `/admin/profile`                               | Admin account security                                           |
 | `/api/store/**`                                | Published storefront reads and filters                           |
 | `/api/admin/products`                          | Admin catalog reads; unsupported mutations return method errors  |
 | `/api/admin/lightspeed/reconcile`              | Admin-only latest-run read and manual reconciliation             |

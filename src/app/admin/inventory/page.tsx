@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 import type { Category, Condition } from "@/types/domain/product";
 
@@ -175,6 +176,9 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
               </tr>
             ) : (
               result.products.map((product) => {
+                const image =
+                  product.images.find((candidate) => candidate.is_primary) ||
+                  product.images[0];
                 const stock = product.variants.reduce(
                   (sum, variant) => sum + (variant.stock ?? 0),
                   0,
@@ -184,7 +188,22 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
                     <td className="px-4 py-3">
                       <details>
                         <summary className="cursor-pointer font-semibold text-white">
-                          {product.name}
+                          <span className="inline-flex items-center gap-3 align-middle">
+                            {image?.url ? (
+                              <Image
+                                src={image.url}
+                                alt={product.name}
+                                width={56}
+                                height={56}
+                                className="h-14 w-14 shrink-0 rounded bg-white object-contain"
+                              />
+                            ) : (
+                              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-zinc-800 text-xs font-normal text-zinc-400">
+                                No image
+                              </span>
+                            )}
+                            {product.name}
+                          </span>
                         </summary>
                         <div className="mt-3 space-y-2 text-xs text-zinc-400">
                           <p>ID: {product.id}</p>

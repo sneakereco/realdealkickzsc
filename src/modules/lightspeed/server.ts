@@ -183,12 +183,15 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
   }
 
   async updateProgress(runId: string, summary: ReconciliationSummary): Promise<void> {
-    const { error } = await this.supabase
+    const { data, error } = await this.supabase
       .from("lightspeed_sync_runs")
       .update({ summary: { ...summary } })
       .eq("id", runId)
-      .eq("status", "running");
+      .eq("status", "running")
+      .select("id")
+      .maybeSingle();
     if (error) throw error;
+    if (!data) throw new Error("Lightspeed run progress was not saved");
   }
 
   async startRun(
@@ -214,12 +217,7 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
     return data.id;
   }
 
-  async applyFamily(
-    runId: string,
-    tenantId: string,
-    families: CanonicalLightspeedFamily[],
-  ): Promise<"created" | "updated" | "skipped"> {
-    if (!families.length) throw new Error("lightspeed_family_has_no_variants");
+  private async loadLinks(tenantId: string) {
     if (!this.links || this.linksTenantId !== tenantId) {
       const links: LinkRow[] = [];
       for (let offset = 0; ; offset += 1000) {
@@ -236,17 +234,92 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
       this.links = links;
       this.linksTenantId = tenantId;
     }
+    return this.links;
+  }
+
+  async updateUnavailableStock(
+    tenantId: string,
+    familyId: string,
+    productIds: ReadonlySet<string>,
+    remoteProductIds: ReadonlySet<string>,
+  ): Promise<boolean> {
+    const links = (await this.loadLinks(tenantId)).filter(
+      (link) =>
+        link.lightspeed_family_id === familyId &&
+        link.lightspeed_product_id &&
+        (productIds.has(link.lightspeed_product_id) ||
+          !remoteProductIds.has(link.lightspeed_product_id)),
+    );
+    let changed = false;
+    const variantIds = links.flatMap((link) =>
+      link.variant_id ? [link.variant_id] : [],
+    );
+    if (variantIds.length) {
+      const variants = await this.supabase
+        .from("product_variants")
+        .select("id,stock")
+        .eq("tenant_id", tenantId)
+        .in("id", variantIds);
+      if (variants.error) throw variants.error;
+      const changedIds = (variants.data ?? [])
+        .filter((v) => v.stock !== 0)
+        .map((v) => v.id);
+      if (changedIds.length) {
+        const updated = await this.supabase
+          .from("product_variants")
+          .update({ stock: 0 })
+          .eq("tenant_id", tenantId)
+          .in("id", changedIds);
+        if (updated.error) throw updated.error;
+        changed = true;
+      }
+    }
+    for (const id of new Set(
+      links.flatMap((link) => (link.product_id ? [link.product_id] : [])),
+    )) {
+      const variants = await this.supabase
+        .from("product_variants")
+        .select("stock")
+        .eq("tenant_id", tenantId)
+        .eq("product_id", id)
+        .gt("stock", 0)
+        .limit(1);
+      if (variants.error) throw variants.error;
+      if (!variants.data?.length) {
+        const updated = await this.supabase
+          .from("products")
+          .update({ is_out_of_stock: true })
+          .eq("tenant_id", tenantId)
+          .eq("id", id)
+          .eq("is_out_of_stock", false)
+          .select("id");
+        if (updated.error) throw updated.error;
+        changed = changed || Boolean(updated.data?.length);
+      }
+    }
+    return changed;
+  }
+
+  async applyFamily(
+    runId: string,
+    tenantId: string,
+    families: CanonicalLightspeedFamily[],
+    unavailableProductIds: ReadonlySet<string> = new Set(),
+  ): Promise<"created" | "updated" | "skipped"> {
+    if (!families.length) throw new Error("lightspeed_family_has_no_variants");
+    await this.loadLinks(tenantId);
     const familyId = families[0].familyId;
     const originalProductIds = [
       ...new Set(
-        this.links
-          .filter((link) => link.lightspeed_family_id === familyId)
-          .flatMap((link) => (link.product_id ? [link.product_id] : [])),
+        this.links!.filter((link) => link.lightspeed_family_id === familyId).flatMap(
+          (link) => (link.product_id ? [link.product_id] : []),
+        ),
       ),
     ];
-    const allRemoteIds = new Set(
+    const importedIds = new Set(
       families.flatMap((family) => family.variants.map((variant) => variant.productId)),
     );
+    const allRemoteIds = new Set([...importedIds, ...unavailableProductIds]);
     let action: "created" | "updated" | "skipped" = "skipped";
     const listings = [];
     for (const family of families) {
@@ -256,7 +329,7 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
           tenantId,
           family,
           originalProductIds,
-          allRemoteIds,
+          importedIds,
         ),
       });
     }
@@ -264,7 +337,7 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
       [];
     for (const { family, prepared } of listings) {
       for (const variant of family.variants) {
-        const link = this.links.find(
+        const link = this.links!.find(
           (item) =>
             item.lightspeed_family_id === familyId &&
             item.lightspeed_product_id === variant.productId,
@@ -302,7 +375,7 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
         });
         if (moved.error) throw moved.error;
         for (const move of changedMoves) {
-          const link = this.links.find((item) => item.variant_id === move.variant_id)!;
+          const link = this.links!.find((item) => item.variant_id === move.variant_id)!;
           link.product_id = move.product_id;
         }
         action = "updated";
@@ -322,6 +395,15 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
       if (products.error) throw products.error;
       for (const product of products.data ?? []) {
         if (listings.some(({ prepared }) => prepared.product.id === product.id)) continue;
+        if (
+          this.links!.some(
+            (link) =>
+              link.product_id === product.id &&
+              link.lightspeed_product_id &&
+              unavailableProductIds.has(link.lightspeed_product_id),
+          )
+        )
+          continue;
         if (product.archived_at && !product.is_active) continue;
         const archived = await this.supabase
           .from("products")
@@ -345,11 +427,23 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
           .eq("product_id", product.id)
           .eq("tenant_id", tenantId);
         if (retired.error) throw retired.error;
-        for (const link of this.links) {
+        for (const link of this.links!) {
           if (link.product_id === product.id) link.sync_state = "retired";
         }
         if (action === "skipped") action = "updated";
       }
+    }
+    // Condition moves may empty a listing that retains an unavailable variant.
+    if (
+      unavailableProductIds.size &&
+      (await this.updateUnavailableStock(
+        tenantId,
+        familyId,
+        unavailableProductIds,
+        allRemoteIds,
+      ))
+    ) {
+      if (action === "skipped") action = "updated";
     }
     await this.recordItem(runId, tenantId, familyId, action, "applied", null);
     await this.resolveReview(tenantId, familyId);
@@ -375,17 +469,16 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
         .eq("tenant_id", tenantId);
       if (result.error) throw result.error;
       const candidates = result.data ?? [];
-      product =
-        candidates.find((candidate) => candidate.is_active) ?? candidates[0] ?? null;
-      if (product) {
+      for (const candidate of candidates.sort(
+        (a, b) => Number(b.is_active) - Number(a.is_active),
+      )) {
         const variants = await this.supabase
           .from("product_variants")
           .select("id, size_label")
-          .eq("product_id", product.id)
+          .eq("product_id", candidate.id)
           .eq("tenant_id", tenantId);
         if (variants.error) throw variants.error;
-        // Preserve retired variant history: a replacement gets a fresh listing when
-        // an obsolete row still occupies its size in the old listing.
+        // Retired and unavailable variants keep their history and occupied sizes.
         const blocked = variants.data?.some(
           (variant) =>
             family.variants.some((remote) => remote.sizeLabel === variant.size_label) &&
@@ -396,7 +489,10 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
                 allRemoteIds.has(link.lightspeed_product_id),
             ),
         );
-        if (blocked) product = null;
+        if (!blocked) {
+          product = candidate;
+          break;
+        }
       }
     }
 
@@ -715,15 +811,18 @@ export class SupabaseCatalogReconciliationStore implements CatalogReconciliation
     status: "success" | "partial_failure" | "failed",
     summary: ReconciliationSummary,
   ): Promise<void> {
-    const { error } = await this.supabase
+    const { data, error } = await this.supabase
       .from("lightspeed_sync_runs")
       .update({
         status,
         summary: { ...summary },
         completed_at: new Date().toISOString(),
       })
-      .eq("id", runId);
+      .eq("id", runId)
+      .select("id")
+      .maybeSingle();
     if (error) throw error;
+    if (!data) throw new Error("Lightspeed run completion was not saved");
   }
 
   private async saveLink(

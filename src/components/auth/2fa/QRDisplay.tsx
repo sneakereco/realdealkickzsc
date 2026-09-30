@@ -12,7 +12,7 @@ export function QRDisplay({
     <div className="border border-zinc-800 bg-zinc-900/50 p-6">
       <div className="flex justify-center">
         <Image
-          src={qrCode}
+          src={qrCode.trimEnd()}
           alt="2FA QR Code"
           width={192}
           height={192}

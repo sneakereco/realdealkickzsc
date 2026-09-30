@@ -1,13 +1,11 @@
 // src/components/shell/ClientShell.tsx
 "use client";
 
-import { Suspense, useCallback, useState, useEffect } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 
 import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { CartDrawer } from "@/components/cart/CartDrawer";
-import { ChatDrawer } from "@/components/chat/ChatDrawer";
-import { ChatLauncher } from "@/components/chat/ChatLauncher";
 import { Footer } from "@/components/shell/Footer";
 import { MobileBottomNav } from "@/components/shell/MobileBottomNav";
 
@@ -15,22 +13,17 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
-  const openChat = useCallback(() => setChatOpen(true), []);
 
   useEffect(() => {
     const handleOpenSearch = () => setSearchOpen(true);
     const handleOpenCart = () => setCartOpen(true);
-    const handleOpenChat = () => setChatOpen(true);
 
     window.addEventListener("openSearch", handleOpenSearch);
     window.addEventListener("openCart", handleOpenCart);
-    window.addEventListener("openChat", handleOpenChat);
 
     return () => {
       window.removeEventListener("openSearch", handleOpenSearch);
       window.removeEventListener("openCart", handleOpenCart);
-      window.removeEventListener("openChat", handleOpenChat);
     };
   }, []);
 
@@ -54,27 +47,8 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
 
       <SearchOverlay isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
       <CartDrawer isOpen={cartOpen} onClose={() => setCartOpen(false)} />
-      <Suspense fallback={null}>
-        <ChatQueryOpener onOpenChat={openChat} />
-      </Suspense>
-      {isStoreRoute && <ChatLauncher />}
-      {isStoreRoute && chatOpen ? (
-        <ChatDrawer onClose={() => setChatOpen(false)} />
-      ) : null}
       {isStoreRoute && <Footer />}
       {isStoreRoute && <MobileBottomNav />}
     </>
   );
-}
-
-function ChatQueryOpener({ onOpenChat }: { onOpenChat: () => void }) {
-  const searchParams = useSearchParams();
-
-  useEffect(() => {
-    if (searchParams.get("chat") === "1") {
-      onOpenChat();
-    }
-  }, [onOpenChat, searchParams]);
-
-  return null;
 }

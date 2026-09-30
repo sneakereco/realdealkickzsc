@@ -415,18 +415,102 @@ test("a website exclusion skips a family without guessing its fields", async () 
   const raw = JSON.parse(await readFile(fixturePath, "utf8"));
   raw.data.category_id = null;
   expect(normalizeLightspeedFamily(raw, { exclude: true })).toEqual([]);
-  expect(normalizeLightspeedFamily({data:{id:"deleted"}}, { exclude: true })).toEqual([]);
+  expect(
+    normalizeLightspeedFamily({ data: { id: "deleted" } }, { exclude: true }),
+  ).toEqual([]);
 });
 
 test("review exposes all missing fields and preserves colour distinctions", async () => {
   const raw = JSON.parse(await readFile(fixturePath, "utf8"));
   raw.data.category_id = null;
   raw.data.variant_attribute_ids = ["colour"];
-  raw.includes.variant_attributes = [{id:"colour",name:"Colour",deleted_at:null}];
+  raw.includes.variant_attributes = [{ id: "colour", name: "Colour", deleted_at: null }];
   raw.data.products[0].variant_attributes = ["Green"];
   const view = describeLightspeedFamily(raw);
-  expect(view.variants[0].issues).toEqual(["Choose a category", "Choose a condition", "Enter a size or variant label"]);
+  expect(view.variants[0].issues).toEqual([
+    "Choose a category",
+    "Choose a condition",
+    "Enter a size or variant label",
+  ]);
   expect(view.variants[0].providerValues).toBe("Colour: Green");
-  const normalized = normalizeLightspeedFamily(raw, {category:"accessories",variants:{"product-10":{condition:"new",size:"One Size — Green"}}});
+  const normalized = normalizeLightspeedFamily(raw, {
+    category: "accessories",
+    variants: { "product-10": { condition: "new", size: "One Size — Green" } },
+  });
   expect(normalized[0].variants[0].sizeLabel).toBe("One Size — Green");
+});
+
+test("review includes images, source details and signed quantities without inventing missing stock", async () => {
+  const raw = JSON.parse(await readFile(fixturePath, "utf8"));
+  raw.data.images.push(
+    { id: "image-2", url: "https://cdn.example.test/back.jpg" },
+    {
+      id: "deleted",
+      url: "https://cdn.example.test/deleted.jpg",
+      deleted_at: "2026-01-01",
+    },
+  );
+  raw.inventory = [
+    { product_id: "product-10", current_inventory_level: -3 },
+    { product_id: "product-10", current_inventory_level: 1 },
+    { product_id: "product-10", current_inventory_level: 100, deleted_at: "2026-01-01" },
+  ];
+  const view = describeLightspeedFamily(raw);
+  expect(view).toMatchObject({
+    brand: "Jordan",
+    description: "Black and red high-top sneaker.",
+    quantity: -2,
+  });
+  expect(view.images).toHaveLength(2);
+  expect(view.variants[0]).toMatchObject({
+    quantity: -2,
+    priceIncludingTax: "189.99",
+    priceExcludingTax: "175.92",
+    cost: "100.00",
+    active: true,
+  });
+  raw.inventory = [];
+  expect(describeLightspeedFamily(raw).variants[0].quantity).toBeNull();
+  expect(describeLightspeedFamily(raw).quantity).toBeNull();
+});
+
+test.each([0, -3])(
+  "imports stock %s as zero sellable stock and keeps incomplete records in review",
+  async (stock) => {
+    const raw = JSON.parse(await readFile(fixturePath, "utf8"));
+    raw.inventory[0].current_inventory_level = stock;
+    expect(normalizeLightspeedFamily(raw)[0].variants[0]).toMatchObject({
+      productId: "product-10",
+      stock: 0,
+    });
+    raw.data.category_id = null;
+    raw.data.products[0].variant_attributes = null;
+    raw.data.products[0].codes = null;
+    expect(() => normalizeLightspeedFamily(raw)).toThrow("mapping_required:category");
+    const { store } = fakeStore([]);
+    const retire = vi.spyOn(store, "retireMissingFamilies");
+    const result = await reconcileCatalog({
+      tenantId: "tenant-1",
+      userId: null,
+      loadFamilies: () => Promise.resolve([raw]),
+      store,
+    });
+    expect(result).toMatchObject({ failed: 1, skipped: 0 });
+    expect(retire).toHaveBeenCalledWith("run-1", "tenant-1", new Set(["family-1"]));
+  },
+);
+
+test("requires corrections for unavailable malformed variants and imports them before restock", async () => {
+  const raw = JSON.parse(await readFile(fixturePath, "utf8"));
+  raw.data.products.push({ id: "later", deleted_at: null });
+  raw.inventory.push({ product_id: "later", current_inventory_level: -1 });
+  expect(() => normalizeLightspeedFamily(raw)).toThrow();
+  raw.data.products[1] = {
+    ...raw.data.products[0],
+    id: "later",
+    variant_attributes: ["new", "11"],
+    codes: [{ type: "CUSTOM", code: "LATER" }],
+  };
+  expect(normalizeLightspeedFamily(raw)[0].variants).toHaveLength(2);
+  expect(normalizeLightspeedFamily(raw)[0].variants[1].stock).toBe(0);
 });

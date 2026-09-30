@@ -206,6 +206,12 @@ export function groupFailures(
 }
 
 export interface CatalogReconciliationStore {
+  updateUnavailableStock?(
+    tenantId: string,
+    familyId: string,
+    productIds: ReadonlySet<string>,
+    remoteProductIds: ReadonlySet<string>,
+  ): Promise<boolean>;
   resolveReview?(tenantId: string, familyId: string): Promise<void>;
   getCorrections?(tenantId: string, familyId: string): Promise<FamilyCorrections>;
   startRun(tenantId: string, userId: string | null): Promise<string>;
@@ -214,6 +220,7 @@ export interface CatalogReconciliationStore {
     runId: string,
     tenantId: string,
     families: CanonicalLightspeedFamily[],
+    unavailableProductIds?: ReadonlySet<string>,
   ): Promise<"created" | "updated" | "skipped">;
   retireMissingFamilies(
     runId: string,
@@ -245,12 +252,65 @@ const categoryNames: Record<string, CanonicalLightspeedFamily["category"]> = {
   electronics: "electronics",
 };
 
+// Update unavailable stock before catalog validation, even when metadata needs review.
+export function inspectLightspeedStock(input: unknown) {
+  const parsed = z
+    .object({
+      data: z
+        .object({
+          id: z.string().min(1),
+          products: z
+            .array(
+              z
+                .object({
+                  id: z.string().min(1),
+                  deleted_at: z.string().datetime().nullish(),
+                })
+                .passthrough(),
+            )
+            .min(1),
+        })
+        .passthrough(),
+      inventory: familyResponseSchema.shape.inventory,
+    })
+    .passthrough()
+    .safeParse(input);
+  if (!parsed.success) {
+    // Preserve the complete validation report when stock itself cannot be trusted.
+    familyResponseSchema.parse(input);
+    throw parsed.error;
+  }
+  const raw = parsed.data;
+  const inventory = new Map<string, number>();
+  for (const row of raw.inventory)
+    if (!row.deleted_at)
+      inventory.set(
+        row.product_id,
+        (inventory.get(row.product_id) ?? 0) + row.current_inventory_level,
+      );
+  const activeProducts = raw.data.products.filter((p) => !p.deleted_at);
+  const unavailableProductIds = new Set(
+    activeProducts
+      .filter((p) => inventory.has(p.id) && inventory.get(p.id)! <= 0)
+      .map((p) => p.id),
+  );
+  return {
+    input: raw,
+    unavailableProductIds,
+    remoteProductIds: new Set(activeProducts.map((p) => p.id)),
+    stockOnly:
+      activeProducts.length > 0 &&
+      activeProducts.every((p) => unavailableProductIds.has(p.id)),
+  };
+}
+
 export function normalizeLightspeedFamily(
   input: unknown,
   corrections: FamilyCorrections = {},
 ): CanonicalLightspeedFamily[] {
   if (corrections.exclude) return [];
-  const response = familyResponseSchema.parse(input);
+  const stock = inspectLightspeedStock(input);
+  const response = familyResponseSchema.parse(stock.input);
   const family = response.data;
   if (excludedServiceFamilyIds.has(family.id)) return [];
   if (!family.products.length) {
@@ -451,14 +511,28 @@ export async function reconcileCatalog(input: {
       }
       try {
         const corrections = await input.store.getCorrections?.(input.tenantId, entityKey);
+        const stock = corrections?.exclude ? null : inspectLightspeedStock(raw);
+        const stockUpdated =
+          stock &&
+          (await input.store.updateUnavailableStock?.(
+            input.tenantId,
+            entityKey,
+            stock.unavailableProductIds,
+            stock.remoteProductIds,
+          ));
         const family = normalizeLightspeedFamily(raw, corrections);
         if (!family.length) {
-          seenFamilyIds.delete(entityKey);
+          if (!stock?.stockOnly) seenFamilyIds.delete(entityKey);
           excludedFamilyIds.add(entityKey);
-          summary.skipped += 1;
+          summary[stockUpdated ? "updated" : "skipped"] += 1;
         } else {
-          const action = await input.store.applyFamily(runId, input.tenantId, family);
-          summary[action] += 1;
+          const action = await input.store.applyFamily(
+            runId,
+            input.tenantId,
+            family,
+            stock?.unavailableProductIds,
+          );
+          summary[action === "skipped" && stockUpdated ? "updated" : action] += 1;
         }
       } catch (error) {
         summary.failed += 1;
@@ -597,7 +671,15 @@ export function describeLightspeedFamily(
   raw: unknown,
   corrections: FamilyCorrections = {},
 ) {
-  const { data, includes } = familyResponseSchema.parse(raw);
+  const { data, includes, inventory } = familyResponseSchema.parse(raw);
+  const quantities = new Map<string, number>();
+  for (const row of inventory) {
+    if (!row.deleted_at)
+      quantities.set(
+        row.product_id,
+        (quantities.get(row.product_id) ?? 0) + row.current_inventory_level,
+      );
+  }
   const attributeNames = (data.variant_attribute_ids ?? []).map(
     (id) => includes.variant_attributes.find((a) => a.id === id)?.name ?? id,
   );
@@ -620,7 +702,15 @@ export function describeLightspeedFamily(
   return {
     id: data.id,
     name: data.name,
-    image: data.images?.find((i) => !i.deleted_at)?.url ?? null,
+    images: (data.images ?? []).filter(
+      (i) => !i.deleted_at && /^https?:\/\//i.test(i.url),
+    ),
+    description: data.description ?? null,
+    brand: includes.brands.find((b) => b.id === data.brand_id)?.name ?? null,
+    quantity:
+      data.products.length && data.products.every((p) => quantities.has(p.id))
+        ? data.products.reduce((total, p) => total + quantities.get(p.id)!, 0)
+        : null,
     category: category ?? "",
     providerCategory: providerCategory ?? "Unassigned",
     exclude: corrections.exclude ?? false,
@@ -636,6 +726,12 @@ export function describeLightspeedFamily(
         saved?.size ?? p.variant_attributes[sizeIndex] ?? (needsSize ? "" : "One Size");
       return {
         id: p.id,
+        quantity: quantities.get(p.id) ?? null,
+        priceIncludingTax: p.prices.price_including_tax ?? null,
+        priceExcludingTax: p.prices.price_excluding_tax,
+        cost: p.cost ?? null,
+        active: !data.deleted_at && p.active.in_store,
+        codes: p.codes,
         sku: p.sku ?? p.codes.find((c) => c.type === "CUSTOM")?.code ?? "Missing SKU",
         condition: condition ?? "",
         size,

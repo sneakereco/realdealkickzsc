@@ -140,16 +140,55 @@ export function LightspeedReviewQueue({ disabled }: { disabled: boolean }) {
               className="space-y-4 rounded border border-zinc-600 p-4"
             >
               <h4 className="text-lg font-semibold">{family.name}</h4>
-              {family.image && (
-                <Image
-                  unoptimized
-                  width={128}
-                  height={128}
-                  src={family.image}
-                  alt={family.name}
-                  className="h-32 w-32 object-contain"
-                />
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {family.images.map((image, index) => (
+                  <a
+                    key={image.id}
+                    href={image.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`Open image ${index + 1} of ${family.name}`}
+                  >
+                    <Image
+                      unoptimized
+                      width={320}
+                      height={320}
+                      src={image.url}
+                      alt={`${family.name} — image ${index + 1}`}
+                      className="h-64 w-full rounded bg-white object-contain"
+                    />
+                  </a>
+                ))}
+              </div>
+              {!family.images.length && (
+                <p className="rounded border border-zinc-700 p-4 text-gray-300">
+                  No images supplied by Lightspeed.
+                </p>
               )}
+              <dl className="grid gap-3 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-gray-400">Brand</dt>
+                  <dd>{family.brand || "Not supplied"}</dd>
+                </div>
+                <div>
+                  <dt className="text-gray-400">Lightspeed category</dt>
+                  <dd>{family.providerCategory}</dd>
+                </div>
+                <div>
+                  <dt className="text-gray-400">Total Lightspeed quantity</dt>
+                  <dd>{family.quantity ?? "Unknown"}</dd>
+                </div>
+              </dl>
+              <div>
+                <h5 className="font-semibold">Description</h5>
+                <p className="whitespace-pre-wrap break-words text-sm text-gray-300">
+                  {family.description || "No description supplied by Lightspeed."}
+                </p>
+              </div>
+              <p className="text-xs text-gray-400">
+                Quantities include all returned Lightspeed outlets. Negative quantities
+                are shown unchanged. Unknown means no inventory record was supplied.
+              </p>
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -192,6 +231,41 @@ export function LightspeedReviewQueue({ disabled }: { disabled: boolean }) {
                       className="space-y-2 rounded border border-zinc-700 p-3"
                     >
                       <legend className="px-1">SKU: {v.sku}</legend>
+                      {v.quantity !== null && v.quantity <= 0 && (
+                        <p className="text-sm text-gray-300">
+                          Imported with zero sellable stock and hidden from the storefront
+                          until stock returns.
+                        </p>
+                      )}
+                      <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <dt className="text-gray-400">Lightspeed quantity</dt>
+                          <dd>{v.quantity ?? "Unknown"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-400">Price including tax</dt>
+                          <dd>{v.priceIncludingTax ?? "Not supplied"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-400">Price excluding tax</dt>
+                          <dd>{v.priceExcludingTax}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-400">Unit cost</dt>
+                          <dd>{v.cost ?? "Not supplied"}</dd>
+                        </div>
+                      </dl>
+                      <p className="text-sm text-gray-300">
+                        Lightspeed status: {v.active ? "Active" : "Inactive"}
+                      </p>
+                      {v.codes.length > 0 && (
+                        <p className="break-words text-xs text-gray-300">
+                          Codes:{" "}
+                          {v.codes
+                            .map((code) => `${code.type}: ${code.code}`)
+                            .join(" · ")}
+                        </p>
+                      )}
                       <p className="text-xs text-gray-300">
                         Lightspeed: {v.providerValues}
                       </p>
@@ -265,7 +339,10 @@ export function LightspeedReviewQueue({ disabled }: { disabled: boolean }) {
                         setFamily({
                           id: item.id,
                           name: item.name,
-                          image: null,
+                          images: [],
+                          description: null,
+                          brand: null,
+                          quantity: null,
                           category: "",
                           providerCategory: "Unavailable",
                           exclude: true,
