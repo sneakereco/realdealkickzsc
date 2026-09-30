@@ -1051,6 +1051,12 @@ export type Database = {
           },
         ];
       };
+      lightspeed_import_reviews: {
+        Row: { tenant_id: string; family_id: string; corrections: Json; source_payload: Json | null; error: string | null; resolved: boolean; updated_by: string | null; updated_at: string };
+        Insert: { tenant_id: string; family_id: string; corrections?: Json; source_payload?: Json | null; error?: string | null; resolved?: boolean; updated_by?: string | null; updated_at?: string };
+        Update: { corrections?: Json; source_payload?: Json | null; error?: string | null; resolved?: boolean; updated_by?: string | null; updated_at?: string };
+        Relationships: [];
+      };
       lightspeed_sync_runs: {
         Row: {
           completed_at: string | null;
@@ -2826,6 +2832,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      move_lightspeed_variants: {
+        Args: { p_tenant_id: string; p_family_id: string; p_moves: Json };
+        Returns: undefined;
+      };
       decrement_variant_stock: {
         Args: { p_quantity: number; p_variant_id: string };
         Returns: undefined;
