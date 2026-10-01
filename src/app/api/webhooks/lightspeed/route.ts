@@ -4,10 +4,8 @@ import {
   captureLightspeedWebhook,
   LightspeedWebhookError,
   processLightspeedWebhookEvent,
-  webhookRunId,
 } from "@/modules/lightspeed/webhook-server";
 import { logError } from "@/lib/utils/log";
-import { runSyncWorker } from "@/modules/lightspeed/sync-jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +15,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const captured = await captureLightspeedWebhook({
       rawBody: await request.text(),
-      signatureHeader: request.headers.get("x-signature"),
+      callbackToken: new URL(request.url).searchParams.get("token"),
       contentType: request.headers.get("content-type"),
     });
     const due = new Date(captured.row.next_attempt_at).getTime() <= Date.now();
@@ -28,9 +26,7 @@ export async function POST(request: Request): Promise<Response> {
     ) {
       after(async () => {
         try {
-          const event = await processLightspeedWebhookEvent(captured.row.id);
-          const runId = webhookRunId(event);
-          if (runId && event.state === "processing") await runSyncWorker(runId);
+          await processLightspeedWebhookEvent(captured.row.id);
         } catch (error) {
           logError(error, {
             layer: "api",

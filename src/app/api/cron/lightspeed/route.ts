@@ -36,8 +36,10 @@ export async function GET(request: Request) {
       .select("id")
       .in("state", ["pending", "retry_wait", "processing"])
       .lte("next_attempt_at", now)
+      .or(`lease_until.is.null,lease_until.lte.${now}`)
       .order("next_attempt_at")
-      .limit(20);
+      // Targeted live work may consume the provider deadline; bound this retry tick.
+      .limit(1);
     if (events.error) throw events.error;
     for (const row of events.data ?? []) {
       const event = await processLightspeedWebhookEvent(row.id, db);

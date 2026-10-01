@@ -4,12 +4,12 @@ import type { AdminSupabaseClient } from "@/lib/supabase/service-role";
 import { createSupabaseAdminClient } from "@/lib/supabase/service-role";
 import type { Json, Tables } from "@/types/db/database.types";
 
-import { enqueueSync } from "./sync-jobs";
+import { runLiveSync } from "./live-sync";
 import {
   isLightspeedEventOutOfOrder,
   parseLightspeedWebhook,
   type SanitizedLightspeedWebhook,
-  verifyLightspeedSignature,
+  verifyLightspeedCallbackToken,
 } from "./webhooks";
 
 type WebhookRow = Tables<"lightspeed_webhook_events">;
@@ -25,14 +25,15 @@ export class LightspeedWebhookError extends Error {
 
 export async function captureLightspeedWebhook(input: {
   rawBody: string;
-  signatureHeader: string | null;
+  callbackToken: string | null;
   contentType: string | null;
   db?: AdminSupabaseClient;
 }): Promise<{ row: WebhookRow; duplicate: boolean }> {
-  const secret = process.env.LIGHTSPEED_WEBHOOK_SECRET;
-  if (!secret) throw new LightspeedWebhookError(503, "webhook_not_configured");
-  if (!verifyLightspeedSignature(input.rawBody, input.signatureHeader, secret)) {
-    throw new LightspeedWebhookError(401, "webhook_signature_invalid");
+  const secret = process.env.LIGHTSPEED_WEBHOOK_ROUTE_SECRET;
+  if (!secret || !/^[a-f0-9]{64}$/.test(secret))
+    throw new LightspeedWebhookError(503, "webhook_not_configured");
+  if (!verifyLightspeedCallbackToken(input.callbackToken, secret)) {
+    throw new LightspeedWebhookError(401, "webhook_token_invalid");
   }
   if (
     input.contentType?.split(";", 1)[0]?.trim().toLowerCase() !==
@@ -55,24 +56,23 @@ export async function captureLightspeedWebhook(input: {
   }
 
   const db = input.db ?? createSupabaseAdminClient();
-  const { data: settings, error: settingsError } = await db
-    .from("tenant_lightspeed_settings")
-    .select("tenant_id, domain_prefix, retailer_id")
-    .eq("domain_prefix", event.domainPrefix)
-    .maybeSingle();
-  if (settingsError) throw settingsError;
-  if (!settings) throw new LightspeedWebhookError(404, "webhook_tenant_not_found");
-  if (event.retailerId && event.retailerId !== settings.retailer_id) {
-    throw new LightspeedWebhookError(400, "webhook_retailer_mismatch");
+  const { data: tenants, error: tenantError } = await db
+    .from("tenants")
+    .select("id")
+    .limit(2);
+  if (tenantError) throw tenantError;
+  if (tenants?.length !== 1) {
+    throw new LightspeedWebhookError(503, "webhook_requires_single_tenant");
   }
+  const tenantId = tenants[0].id;
 
-  const existing = await findEvent(db, settings.tenant_id, event.eventId);
+  const existing = await findEvent(db, tenantId, event.eventId);
   if (existing) return { row: existing, duplicate: true };
 
   const { data, error } = await db
     .from("lightspeed_webhook_events")
     .insert({
-      tenant_id: settings.tenant_id,
+      tenant_id: tenantId,
       event_id: event.eventId,
       topic: event.type,
       resource_id: event.resourceId,
@@ -83,7 +83,7 @@ export async function captureLightspeedWebhook(input: {
     .select()
     .single();
   if (error?.code === "23505") {
-    const raced = await findEvent(db, settings.tenant_id, event.eventId);
+    const raced = await findEvent(db, tenantId, event.eventId);
     if (raced) return { row: raced, duplicate: true };
   }
   if (error) throw error;
@@ -102,7 +102,13 @@ export async function processLightspeedWebhookEvent(
   if (loaded.error) throw loaded.error;
   let event = loaded.data;
   if (event.state === "succeeded") return event;
-  if (!event.tenant_id) throw new Error("webhook_tenant_missing");
+  if (!event.tenant_id || !event.resource_id)
+    return updateEvent(db, event.id, {
+      state: "needs_attention",
+      lease_until: null,
+      last_error:
+        "Legacy event lacks store or resource identity; review before retrying.",
+    });
   const tenantId = event.tenant_id;
 
   const linkedRunId = webhookRunId(event);
@@ -171,14 +177,14 @@ export async function processLightspeedWebhookEvent(
   if (!claim.data) return event;
   event = claim.data;
   try {
-    const run = await enqueueSync(tenantId, null, db, event.id);
-    return {
-      ...event,
-      state: "processing",
+    const outcome = await runLiveSync(tenantId, event);
+    return updateEvent(db, event.id, {
+      state: "succeeded",
+      processed_at: new Date().toISOString(),
       lease_until: null,
-      outcome: { run_id: run.id },
+      outcome,
       last_error: null,
-    };
+    });
   } catch (error) {
     if (
       error instanceof Error &&

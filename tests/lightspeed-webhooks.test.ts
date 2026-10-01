@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
   isLightspeedEventOutOfOrder,
   parseLightspeedWebhook,
-  verifyLightspeedSignature,
+  verifyLightspeedCallbackToken,
 } from "../src/modules/lightspeed/webhooks";
 
 const fixtures = ["product-update", "inventory-update", "sale-update"];
@@ -25,23 +24,11 @@ for (const name of fixtures) {
   });
 }
 
-void test("rejects invalid signatures with a timing-safe HMAC check", () => {
-  const raw = "type=product.update&payload=%7B%22id%22%3A%22p1%22%7D";
-  const secret = "test-secret";
-  const signature = createHmac("sha256", secret).update(raw).digest("base64");
-
-  assert.equal(
-    verifyLightspeedSignature(
-      raw,
-      `algorithm=HMAC-SHA256,signature=${signature}`,
-      secret,
-    ),
-    true,
-  );
-  assert.equal(
-    verifyLightspeedSignature(raw, "algorithm=HMAC-SHA256,signature=invalid", secret),
-    false,
-  );
+void test("rejects missing and incorrect private-app callback tokens", () => {
+  const secret = "a".repeat(64);
+  assert.equal(verifyLightspeedCallbackToken(secret, secret), true);
+  assert.equal(verifyLightspeedCallbackToken(null, secret), false);
+  assert.equal(verifyLightspeedCallbackToken("b".repeat(64), secret), false);
 });
 
 void test("uses provider identity and version for replay and out-of-order ordering", async () => {

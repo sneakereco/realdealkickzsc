@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 import { z } from "zod";
 
@@ -29,15 +29,13 @@ export interface SanitizedLightspeedWebhook {
   bodySha256: string;
 }
 
-export function verifyLightspeedSignature(
-  rawBody: string,
-  header: string | null,
+export function verifyLightspeedCallbackToken(
+  token: string | null,
   secret: string,
 ): boolean {
-  const supplied = parseSignature(header);
-  if (!supplied || !secret) return false;
-  const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest();
-  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+  if (!/^[a-f0-9]{64}$/.test(secret) || !token || !/^[a-f0-9]{64}$/.test(token))
+    return false;
+  return timingSafeEqual(Buffer.from(token, "hex"), Buffer.from(secret, "hex"));
 }
 
 export function parseLightspeedWebhook(rawBody: string): SanitizedLightspeedWebhook {
@@ -65,21 +63,27 @@ export function parseLightspeedWebhook(rawBody: string): SanitizedLightspeedWebh
       ? (payload as z.infer<(typeof schemas)["inventory.update"]>).product_id
       : (payload as z.infer<(typeof schemas)["product.update"]>).id;
   const resourceVersion = payload.version ?? null;
+  const outletId =
+    type === "inventory.update"
+      ? (payload as z.infer<(typeof schemas)["inventory.update"]>).outlet_id
+      : null;
+  const retailerId = form.has("retailer_id")
+    ? single(form, "retailer_id")
+    : (payload.retailer_id ?? null);
+  if (retailerId && payload.retailer_id && retailerId !== payload.retailer_id)
+    throw new Error("webhook_retailer_mismatch");
   const bodySha256 = createHash("sha256").update(rawBody, "utf8").digest("hex");
   return {
     eventId:
       resourceVersion === null
         ? `${type}:${resourceId}:sha256:${bodySha256}`
-        : `${type}:${resourceId}:${resourceVersion}`,
+        : `${type}:${resourceId}:${outletId ? `${outletId}:` : ""}${resourceVersion}`,
     type,
     domainPrefix,
-    retailerId: payload.retailer_id ?? null,
+    retailerId,
     resourceId,
     resourceVersion,
-    outletId:
-      type === "inventory.update"
-        ? (payload as z.infer<(typeof schemas)["inventory.update"]>).outlet_id
-        : null,
+    outletId,
     bodySha256,
   };
 }
@@ -101,22 +105,4 @@ function single(form: URLSearchParams, name: string): string {
     throw new Error(`webhook_${name}_count_invalid`);
   }
   return values[0];
-}
-
-function parseSignature(header: string | null): Buffer | null {
-  if (!header) return null;
-  const fields = new Map<string, string>();
-  for (const segment of header.split(",")) {
-    const separator = segment.indexOf("=");
-    if (separator <= 0) return null;
-    const key = segment.slice(0, separator).trim().toLowerCase();
-    const value = segment.slice(separator + 1).trim();
-    if (!key || !value || fields.has(key)) return null;
-    fields.set(key, value);
-  }
-  if (fields.size !== 2 || fields.get("algorithm") !== "HMAC-SHA256") return null;
-  const encoded = fields.get("signature");
-  if (!encoded || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return null;
-  const digest = Buffer.from(encoded, "base64");
-  return digest.length === 32 && digest.toString("base64") === encoded ? digest : null;
 }
