@@ -68,17 +68,43 @@ website projection manually: no missing family is retired unless the remote scan
 
 ## Webhook delivery and recovery
 
-Configure Lightspeed to send `product.update`, `inventory.update`, and `sale.update` events to
-`POST /api/webhooks/lightspeed`. Valid events are durably captured before the 204 response, then
-processed after the response. Duplicate IDs are idempotent and older resource versions are
-recorded as successful, skipped events.
+Live sync is event-driven and separate from manual full-catalog reconciliation. Configure
+`product.update`, `inventory.update`, and `sale.update` subscriptions to
+`https://YOUR-STAGING-HOST/api/webhooks/lightspeed?token=CALLBACK_SECRET`.
+Generate `LIGHTSPEED_WEBHOOK_ROUTE_SECRET` as 32 random bytes encoded as 64 lowercase hex
+characters, independently of the Lightspeed application token. Store it in the target
+Doppler config and Vercel project's Production environment; deploy before registering subscriptions.
+This is a URL credential, not a Lightspeed signing key. Do not publish the complete URL or
+include it in application logs. Restrict access to hosting/provider logs that may contain it.
+Remove obsolete signing-secret variables when deploying this receiver, retaining them securely
+only if needed for rollback to the old receiver.
+
+Live sync reads the tenant ID directly from `public.tenants`, which must contain exactly
+one row. Zero or multiple rows reject delivery with `webhook_requires_single_tenant` (503).
+No `tenant_lightspeed_settings` row or retailer ID configuration is required. The callback
+domain must match `LIGHTSPEED_DOMAIN_PREFIX`. Use the existing private application token
+with `webhooks`, `products:read`, `inventory:read`, and `sales:read` permissions.
+
+The receiver authenticates the callback token and validates the domain and single tenant, durably captures a sanitized
+event, responds 204, then processes it. Product events fetch only the affected family;
+inventory and sale events fetch current stock for affected products. Unknown variants use
+the existing family importer. Sale product IDs come from the authenticated sales API.
+Stock is never calculated by subtracting sale quantities or trusting the webhook count.
+Refunds restore website stock only when the provider inventory is restored.
+
+Duplicates are idempotent and inventory event identities include the outlet. Live work uses
+the existing tenant lock and hidden family run scope, without starting manual full-catalog
+jobs. Events received during a manual run wait for its lock, then read fresh provider state.
+Manual behavior, checkpoints, cancellation and full-scan retirement remain unchanged.
 
 Event states are `pending`, `processing`, `succeeded`, `retry_wait`, and `needs_attention`.
-Event enqueue uses a 10-minute claim lease. Once enqueued, `outcome.run_id` points to the same
-durable worker used by manual sync. Cron checks that run before marking the event successful.
-Cancelled, failed, or partially failed runs become `needs_attention` instead of automatically
-undoing an admin cancellation. Enqueue failures back off up to one hour; the fifth failed
-attempt becomes `needs_attention`. An occupied tenant waits without consuming an attempt.
+Processing uses a 10-minute event lease and a 240-second work deadline within the 300-second
+route limit. Completed events include the targeted run ID in their outcome. Interrupted
+family locks recover through the existing six-minute legacy-run recovery. Failures back off;
+the fifth attempt becomes `needs_attention`. An occupied tenant waits without consuming an
+attempt. Cron retries one event per invocation to bound execution time. Legacy events missing
+identity become `needs_attention` rather than blocking the queue. Historical full-catalog
+webhook runs are still observed to completion during the transition.
 
 For `retry_wait` or `needs_attention`:
 
@@ -95,11 +121,11 @@ Rotate one environment at a time in Doppler and redeploy that environment.
 
 - Access token: replace `LIGHTSPEED_ACCESS_TOKEN`, deploy, check readiness, then run a manual
   reconciliation and save its summary.
-- Webhook secret: coordinate the new `LIGHTSPEED_WEBHOOK_SECRET` with Lightspeed. During a
-  mismatch deliveries return 401. After deployment, confirm a newly signed event reaches
-  `succeeded`; retry any captured failures after the cause is fixed.
-- Domain/store change: update the tenant mapping and `LIGHTSPEED_DOMAIN_PREFIX` together. A
-  mismatch is rejected and must not be bypassed.
+- Callback secret: coordinate `LIGHTSPEED_WEBHOOK_ROUTE_SECRET` with the registered URLs
+  and deployment. Mismatches return 401. Confirm an authenticated event reaches `succeeded`
+  after rotation; the application access token does not need to change.
+- Domain/store change: update `LIGHTSPEED_DOMAIN_PREFIX` and the application token together.
+  A callback domain mismatch is rejected and must not be bypassed.
 
 Do not copy production secrets into local files, issue comments, logs, or screenshots.
 
@@ -109,6 +135,8 @@ Do not copy production secrets into local files, issue comments, logs, or screen
 2. Confirm `/api/readyz`, then run one manual reconciliation with zero failed items.
 3. Compare representative Lightspeed SKU, price, stock, and inactive products with `/store` and
    `/admin/inventory`; inactive/out-of-stock products must not appear publicly.
-4. Deliver one signed webhook and retain its `succeeded` event evidence.
+4. Deliver authenticated private-app webhooks and retain `succeeded` event evidence for
+   product creation/editing, POS sale, restocking return, and duplicate replay. Confirm that
+   refunds without restocking do not increase stock and manual-run overlap defers live writes.
 5. Verify catalog purchase actions point to Instagram and Cloudflare behavior follows
    [analytics operations](ANALYTICS.md).

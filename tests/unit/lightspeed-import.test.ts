@@ -2,7 +2,9 @@ import { readFile } from "node:fs/promises";
 import { afterEach, expect, test, vi } from "vitest";
 import type { TypedSupabaseClient } from "@/lib/supabase/server";
 vi.mock("server-only", () => ({}));
-vi.mock("@/config/env", () => ({ env: {} }));
+vi.mock("@/config/env", () => ({
+  env: { LIGHTSPEED_DOMAIN_PREFIX: "test-store", LIGHTSPEED_ACCESS_TOKEN: "test-token" },
+}));
 vi.mock("@/lib/utils/log", () => ({ logError: vi.fn() }));
 import { SupabaseCatalogReconciliationStore } from "@/modules/lightspeed/server";
 import {
@@ -11,8 +13,80 @@ import {
 } from "@/modules/lightspeed/reconciliation";
 import { ProductTitleParserService } from "@/services/product-title-parser-service";
 import { parseTitleWithCatalog } from "@/services/product-title-parser";
+import { runLiveSync } from "@/modules/lightspeed/live-sync";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+test("live events create, edit, sell out and restock through the real importer without listing the catalog", async () => {
+  vi.spyOn(ProductTitleParserService.prototype, "parseTitle").mockImplementation(
+    (input) =>
+      Promise.resolve(
+        parseTitleWithCatalog(input, { brandAliases: [], modelAliasesByBrand: {} }),
+      ),
+  );
+  const raw = JSON.parse(
+    await readFile(
+      new URL("../fixtures/lightspeed/manual-reconciliation.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const fetcher = vi.fn((input: string) => {
+    const url = new URL(input);
+    if (url.pathname.endsWith("/products/product-10"))
+      return Promise.resolve(
+        Response.json({ data: { ...raw.data.products[0], family_id: "family-1" } }),
+      );
+    if (url.pathname.endsWith("/product_families/family-1"))
+      return Promise.resolve(Response.json({ data: raw.data, includes: raw.includes }));
+    if (url.pathname.endsWith("/inventory"))
+      return Promise.resolve(Response.json(raw.inventory));
+    if (url.pathname.endsWith("/sales/sale-1"))
+      return Promise.resolve(
+        Response.json({ data: { line_items: [{ product: { id: "product-10" } }] } }),
+      );
+    throw new Error(`Unexpected catalog scan: ${url.pathname}`);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const { db, tables } = database();
+  const productEvent = { topic: "product.update", resource_id: "product-10" };
+  await expect(runLiveSync("tenant-1", productEvent, db)).resolves.toMatchObject({
+    created: 1,
+  });
+  const originalId = tables.product_variants[0].id;
+  raw.data.description = "Updated at Lightspeed";
+  raw.data.products[0].prices.price_including_tax = "199.99";
+  await runLiveSync("tenant-1", productEvent, db);
+  expect(tables.products[0].description).toBe("Updated at Lightspeed");
+  expect(tables.product_variants[0]).toMatchObject({
+    id: originalId,
+    sale_price_cents: 19999,
+    stock: 2,
+  });
+  raw.inventory[0].current_inventory_level = 0;
+  await runLiveSync(
+    "tenant-1",
+    { topic: "inventory.update", resource_id: "product-10" },
+    db,
+  );
+  expect(tables.product_variants[0].stock).toBe(0);
+  expect(tables.products[0].is_out_of_stock).toBe(true);
+  // A financial refund with unchanged inventory must not invent returned stock.
+  await runLiveSync("tenant-1", { topic: "sale.update", resource_id: "sale-1" }, db);
+  expect(tables.product_variants[0].stock).toBe(0);
+  raw.inventory[0].current_inventory_level = 1;
+  await runLiveSync("tenant-1", { topic: "sale.update", resource_id: "sale-1" }, db);
+  expect(tables.product_variants).toHaveLength(1);
+  expect(tables.product_variants[0]).toMatchObject({ id: originalId, stock: 1 });
+  expect(tables.products[0].is_out_of_stock).toBe(false);
+  expect(
+    tables.lightspeed_sync_runs.every(
+      (r) => (r.summary as { scope: string }).scope === "family",
+    ),
+  ).toBe(true);
+});
 
 test("run status writes reject missing rows rather than silently succeeding", async () => {
   const { db } = database();

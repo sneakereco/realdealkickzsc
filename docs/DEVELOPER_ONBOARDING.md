@@ -25,7 +25,7 @@ application values are:
 | Supabase      | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_DB_URL` |
 | Rate limiting | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`                                                         |
 | Admin session | `ADMIN_SESSION_SECRET`                                                                                       |
-| Lightspeed    | `LIGHTSPEED_ACCESS_TOKEN`, `LIGHTSPEED_DOMAIN_PREFIX`, `LIGHTSPEED_WEBHOOK_SECRET`, `CRON_SECRET`            |
+| Lightspeed    | `LIGHTSPEED_ACCESS_TOKEN`, `LIGHTSPEED_DOMAIN_PREFIX`, `LIGHTSPEED_WEBHOOK_ROUTE_SECRET`, `CRON_SECRET`      |
 | Cloudflare    | `CLOUDFLARE_WEB_ANALYTICS_ENABLED`, `CLOUDFLARE_WEB_ANALYTICS_TOKEN`                                         |
 
 `ADMIN_SESSION_SECRET` must decode to exactly 32 bytes. Generate it with
