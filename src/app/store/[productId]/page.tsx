@@ -3,6 +3,7 @@
 import { unstable_cache } from "next/cache";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { z } from "zod";
 
 import { createSupabasePublicClient } from "@/lib/supabase/public";
 import { ProductRepository } from "@/modules/catalog/product-repository";
@@ -32,11 +33,7 @@ export async function generateMetadata({
   const { productId } = await params;
 
   // Validate UUID format
-  const isUuid =
-    typeof productId === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      productId,
-    );
+  const isUuid = z.uuid().safeParse(productId).success;
 
   if (!isUuid) {
     return {
@@ -111,11 +108,7 @@ export default async function ProductDetailPage({
   params: Promise<{ productId: string }>;
 }) {
   const { productId } = await params;
-  const isUuid =
-    typeof productId === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      productId,
-    );
+  const isUuid = z.uuid().safeParse(productId).success;
   if (!isUuid) {
     notFound();
   }
