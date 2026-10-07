@@ -1,6 +1,8 @@
 //  src/repositories/product-repo.ts
 import type { TypedSupabaseClient } from "@/lib/supabase/server";
 import { buildSearchTerms, rankSearchCandidates } from "@/lib/search/product-search";
+import { normalizeSizeLabel } from "@/lib/size-filters";
+import { expandShoeSizeSelection } from "@/config/constants/sizes";
 import type { Tables, TablesInsert, TablesUpdate } from "@/types/db/database.types";
 
 export interface ProductFilters {
@@ -1198,6 +1200,7 @@ export class ProductRepository {
       .select("size_label, product:products!inner(size_type, is_active, is_out_of_stock)")
       .gt("stock", 0)
       .eq("product.is_active", true)
+      .is("product.archived_at", null)
       .lte("product.go_live_at", new Date().toISOString());
 
     if (filters?.tenantId) {
@@ -1229,11 +1232,7 @@ export class ProductRepository {
       query = query.in("product.condition", filters.condition);
     }
 
-    const { data, error } = await query.limit(5000);
-
-    if (error) {
-      throw error;
-    }
+    const data = await this.readAllPages(query.order("id"));
 
     const shoe = new Set<string>();
     const clothing = new Set<string>();
@@ -1244,9 +1243,9 @@ export class ProductRepository {
         continue;
       }
       if (row.product?.size_type === "shoe") {
-        shoe.add(sizeLabel);
+        shoe.add(normalizeSizeLabel("shoe", sizeLabel));
       } else if (row.product?.size_type === "clothing") {
-        clothing.add(sizeLabel);
+        clothing.add(normalizeSizeLabel("clothing", sizeLabel));
       }
     }
 
@@ -1577,8 +1576,8 @@ export class ProductRepository {
 
   private async listProductIdsForSizes(filters: ProductFilters) {
     const selectedSizeGroups = [
-      { sizeType: "shoe", labels: filters.sizeShoe ?? [] },
-      { sizeType: "clothing", labels: filters.sizeClothing ?? [] },
+      { sizeType: "shoe" as const, labels: filters.sizeShoe ?? [] },
+      { sizeType: "clothing" as const, labels: filters.sizeClothing ?? [] },
     ].filter((group) => group.labels.length > 0);
 
     if (selectedSizeGroups.length === 0) {
@@ -1588,24 +1587,29 @@ export class ProductRepository {
     const productIds = new Set<string>();
 
     for (const group of selectedSizeGroups) {
+      const normalized = group.labels.map((label) =>
+        normalizeSizeLabel(group.sizeType, label),
+      );
+      const selected = new Set(
+        group.sizeType === "shoe" ? expandShoeSizeSelection(normalized) : normalized,
+      );
       let query = this.supabase
         .from("product_variants")
-        .select("product_id, product:products!inner(size_type)")
+        .select("product_id, size_label, product:products!inner(size_type)")
         .eq("product.size_type", group.sizeType)
-        .in("size_label", group.labels)
         .gt("stock", 0);
 
       if (filters.tenantId) {
         query = query.eq("tenant_id", filters.tenantId);
       }
 
-      const { data, error } = await query;
-      if (error) {
-        throw error;
-      }
+      const data = await this.readAllPages(query.order("id"));
 
       for (const row of data ?? []) {
-        if (row.product_id) {
+        if (
+          row.product_id &&
+          selected.has(normalizeSizeLabel(group.sizeType, row.size_label))
+        ) {
           productIds.add(row.product_id);
         }
       }
