@@ -7,18 +7,33 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { X, ChevronRight, ChevronDown, Filter } from "lucide-react";
 
 import {
-  SHOE_SIZE_GROUPS,
-  CLOTHING_SIZE_GROUPS,
   EU_SIZE_ALIASES,
   expandShoeSizeSelection,
   isEuShoeSize,
 } from "@/config/constants/sizes";
+import {
+  groupShoeFilterSizes,
+  groupClothingFilterSizes,
+  normalizeSizeLabel,
+} from "@/lib/size-filters";
 
 import { VirtualizedBrandList } from "./VirtualizedBrandList";
 
 type BrandOption = { label: string; value: string };
 
 const NON_BRAND_CATEGORIES = new Set(["accessories", "electronics"]);
+const shoeGroupLabels: Record<string, string> = {
+  youth: "Kids & youth",
+  mens: "Men's",
+  womens: "Women's",
+  eu: "EU",
+  other: "Other sizes",
+};
+const clothingGroupLabels: Record<string, string> = {
+  clothing: "Clothing",
+  jeans: "Jeans",
+  other: "Other sizes",
+};
 
 interface FilterPanelProps {
   selectedCategories: string[];
@@ -57,8 +72,8 @@ export function FilterPanel({
   selectedCategories,
   selectedBrands,
   selectedModels,
-  selectedShoeSizes,
-  selectedClothingSizes,
+  selectedShoeSizes: rawSelectedShoeSizes,
+  selectedClothingSizes: rawSelectedClothingSizes,
   selectedConditions,
   brands,
   modelsByBrand,
@@ -71,6 +86,22 @@ export function FilterPanel({
 }: FilterPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const selectedShoeSizes = useMemo(
+    () =>
+      Array.from(
+        new Set(rawSelectedShoeSizes.map((size) => normalizeSizeLabel("shoe", size))),
+      ),
+    [rawSelectedShoeSizes],
+  );
+  const selectedClothingSizes = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          rawSelectedClothingSizes.map((size) => normalizeSizeLabel("clothing", size)),
+        ),
+      ),
+    [rawSelectedClothingSizes],
+  );
 
   const [isOpen, setIsOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -83,13 +114,16 @@ export function FilterPanel({
   const [expandedSizeGroups, setExpandedSizeGroups] = useState<Record<string, boolean>>({
     youth: true,
     mens: true,
+    womens: true,
     eu: true,
+    other: true,
   });
   const [expandedClothingGroups, setExpandedClothingGroups] = useState<
     Record<string, boolean>
   >({
     clothing: true,
     jeans: true,
+    other: true,
   });
   const [expandedBrands, setExpandedBrands] = useState<Record<string, boolean>>({});
 
@@ -111,17 +145,6 @@ export function FilterPanel({
   const formatConditionLabel = (condition: string) =>
     condition === "used" ? "Pre-owned" : condition === "new" ? "New" : condition;
 
-  const availableShoeSizeSet = useMemo(() => {
-    const expanded = new Set(availableShoeSizes);
-    availableShoeSizes.forEach((size) => {
-      if (!isEuShoeSize(size)) {
-        return;
-      }
-      (EU_SIZE_ALIASES[size] ?? []).forEach((usSize) => expanded.add(usSize));
-    });
-    return expanded;
-  }, [availableShoeSizes]);
-
   const expandedSelectedShoeSizes = useMemo(
     () => expandShoeSizeSelection(selectedShoeSizes),
     [selectedShoeSizes],
@@ -132,34 +155,19 @@ export function FilterPanel({
     [expandedSelectedShoeSizes],
   );
 
-  const availableClothingSizeSet = useMemo(
-    () => new Set(availableClothingSizes),
-    [availableClothingSizes],
-  );
-
   const shoeSizeGroups = useMemo(
-    () => ({
-      youth: SHOE_SIZE_GROUPS.youth.filter((size) => availableShoeSizeSet.has(size)),
-      mens: SHOE_SIZE_GROUPS.mens.filter((size) => availableShoeSizeSet.has(size)),
-      eu: SHOE_SIZE_GROUPS.eu.filter((size) => availableShoeSizeSet.has(size)),
-    }),
-    [availableShoeSizeSet],
+    () => groupShoeFilterSizes(availableShoeSizes),
+    [availableShoeSizes],
   );
 
   const clothingSizeGroups = useMemo(
-    () => ({
-      clothing: CLOTHING_SIZE_GROUPS.clothing.filter((size) =>
-        availableClothingSizeSet.has(size),
-      ),
-      jeans: CLOTHING_SIZE_GROUPS.jeans.filter((size) =>
-        availableClothingSizeSet.has(size),
-      ),
-    }),
-    [availableClothingSizeSet],
+    () => groupClothingFilterSizes(availableClothingSizes),
+    [availableClothingSizes],
   );
 
-  const hasClothingSizes =
-    clothingSizeGroups.clothing.length > 0 || clothingSizeGroups.jeans.length > 0;
+  const hasClothingSizes = Object.values(clothingSizeGroups).some(
+    (sizes) => sizes.length > 0,
+  );
 
   const availableConditionSet = useMemo(
     () => new Set(availableConditions),
@@ -539,107 +547,42 @@ export function FilterPanel({
 
             {expandedSections.shoeSize && (
               <div className="space-y-3 w-full min-w-0">
-                {shoeSizeGroups.youth.length > 0 && (
-                  <div className="w-full min-w-0">
-                    <button
-                      onClick={() => toggleSizeGroup("youth")}
-                      className="flex items-center justify-between w-full text-xs font-medium text-gray-400 hover:text-white mb-2 transition-colors min-w-0"
-                    >
-                      <span className="uppercase tracking-wide flex-1 text-left truncate">
-                        Youth
-                      </span>
-                      <ToggleIcon open={!!expandedSizeGroups.youth} size={14} />
-                    </button>
-
-                    {expandedSizeGroups.youth && (
-                      <div className="grid grid-cols-2 gap-2 ml-2 w-full min-w-0">
-                        {shoeSizeGroups.youth.map((size) => (
-                          <label
-                            key={size}
-                            className="flex items-start gap-2 text-xs text-gray-300 hover:text-white cursor-pointer min-w-0"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={expandedSelectedShoeSizeSet.has(size)}
-                              onChange={() => handleShoeSizeChange(size)}
-                              className="rdk-checkbox flex-shrink-0 mt-0.5"
-                              data-testid={`filter-size-shoe-${toTestId(size)}`}
-                            />
-                            <span className="flex-1 break-words min-w-0">{size}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {shoeSizeGroups.mens.length > 0 && (
-                  <div className="w-full min-w-0">
-                    <button
-                      onClick={() => toggleSizeGroup("mens")}
-                      className="flex items-center justify-between w-full text-xs font-medium text-gray-400 hover:text-white mb-2 transition-colors min-w-0"
-                    >
-                      <span className="uppercase tracking-wide flex-1 text-left truncate">
-                        Men&apos;s
-                      </span>
-                      <ToggleIcon open={!!expandedSizeGroups.mens} size={14} />
-                    </button>
-
-                    {expandedSizeGroups.mens && (
-                      <div className="grid grid-cols-2 gap-2 ml-2 w-full min-w-0">
-                        {shoeSizeGroups.mens.map((size) => (
-                          <label
-                            key={size}
-                            className="flex items-start gap-2 text-xs text-gray-300 hover:text-white cursor-pointer min-w-0"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={expandedSelectedShoeSizeSet.has(size)}
-                              onChange={() => handleShoeSizeChange(size)}
-                              className="rdk-checkbox flex-shrink-0 mt-0.5"
-                              data-testid={`filter-size-shoe-${toTestId(size)}`}
-                            />
-                            <span className="flex-1 break-words min-w-0">{size}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {shoeSizeGroups.eu.length > 0 && (
-                  <div className="w-full min-w-0">
-                    <button
-                      onClick={() => toggleSizeGroup("eu")}
-                      className="flex items-center justify-between w-full text-xs font-medium text-gray-400 hover:text-white mb-2 transition-colors min-w-0"
-                    >
-                      <span className="uppercase tracking-wide flex-1 text-left truncate">
-                        EU
-                      </span>
-                      <ToggleIcon open={!!expandedSizeGroups.eu} size={14} />
-                    </button>
-
-                    {expandedSizeGroups.eu && (
-                      <div className="grid grid-cols-1 gap-2 ml-2 w-full min-w-0">
-                        {shoeSizeGroups.eu.map((size) => (
-                          <label
-                            key={size}
-                            className="flex items-start gap-2 text-xs text-gray-300 hover:text-white cursor-pointer min-w-0"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={expandedSelectedShoeSizeSet.has(size)}
-                              onChange={() => handleShoeSizeChange(size)}
-                              className="rdk-checkbox flex-shrink-0 mt-0.5"
-                              data-testid={`filter-size-shoe-${toTestId(size)}`}
-                            />
-                            <span className="flex-1 break-words min-w-0">{size}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {Object.entries(shoeSizeGroups)
+                  .filter(([, sizes]) => sizes.length > 0)
+                  .map(([group, sizes]) => (
+                    <div key={group} className="w-full min-w-0">
+                      <button
+                        onClick={() => toggleSizeGroup(group)}
+                        className="flex items-center justify-between w-full text-xs font-medium text-gray-400 hover:text-white mb-2 transition-colors min-w-0"
+                      >
+                        <span className="uppercase tracking-wide flex-1 text-left truncate">
+                          {shoeGroupLabels[group]}
+                        </span>
+                        <ToggleIcon open={!!expandedSizeGroups[group]} size={14} />
+                      </button>
+                      {expandedSizeGroups[group] && (
+                        <div
+                          className={`grid ${group === "eu" ? "grid-cols-1" : "grid-cols-2"} gap-2 ml-2 w-full min-w-0`}
+                        >
+                          {sizes.map((size) => (
+                            <label
+                              key={size}
+                              className="flex items-start gap-2 text-xs text-gray-300 hover:text-white cursor-pointer min-w-0"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={expandedSelectedShoeSizeSet.has(size)}
+                                onChange={() => handleShoeSizeChange(size)}
+                                className="rdk-checkbox flex-shrink-0 mt-0.5"
+                                data-testid={`filter-size-shoe-${toTestId(size)}`}
+                              />
+                              <span className="flex-1 break-words min-w-0">{size}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
               </div>
             )}
           </div>
@@ -658,73 +601,40 @@ export function FilterPanel({
 
             {expandedSections.clothingSize && (
               <div className="space-y-3 w-full min-w-0">
-                {clothingSizeGroups.clothing.length > 0 && (
-                  <div className="w-full min-w-0">
-                    <button
-                      onClick={() => toggleClothingGroup("clothing")}
-                      className="flex items-center justify-between w-full text-xs font-medium text-gray-400 hover:text-white mb-2 transition-colors min-w-0"
-                    >
-                      <span className="uppercase tracking-wide flex-1 text-left truncate">
-                        Clothing
-                      </span>
-                      <ToggleIcon open={!!expandedClothingGroups.clothing} size={14} />
-                    </button>
-
-                    {expandedClothingGroups.clothing && (
-                      <div className="grid grid-cols-2 gap-2 ml-2 w-full min-w-0">
-                        {clothingSizeGroups.clothing.map((size) => (
-                          <label
-                            key={size}
-                            className="flex items-start gap-2 text-xs text-gray-300 hover:text-white cursor-pointer min-w-0"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedClothingSizes.includes(size)}
-                              onChange={() => handleClothingSizeChange(size)}
-                              className="rdk-checkbox flex-shrink-0 mt-0.5"
-                              data-testid={`filter-size-clothing-${toTestId(size)}`}
-                            />
-                            <span className="flex-1 break-words min-w-0">{size}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {clothingSizeGroups.jeans.length > 0 && (
-                  <div className="w-full min-w-0">
-                    <button
-                      onClick={() => toggleClothingGroup("jeans")}
-                      className="flex items-center justify-between w-full text-xs font-medium text-gray-400 hover:text-white mb-2 transition-colors min-w-0"
-                    >
-                      <span className="uppercase tracking-wide flex-1 text-left truncate">
-                        Jeans
-                      </span>
-                      <ToggleIcon open={!!expandedClothingGroups.jeans} size={14} />
-                    </button>
-
-                    {expandedClothingGroups.jeans && (
-                      <div className="grid grid-cols-2 gap-2 ml-2 w-full min-w-0">
-                        {clothingSizeGroups.jeans.map((size) => (
-                          <label
-                            key={size}
-                            className="flex items-start gap-2 text-xs text-gray-300 hover:text-white cursor-pointer min-w-0"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedClothingSizes.includes(size)}
-                              onChange={() => handleClothingSizeChange(size)}
-                              className="rdk-checkbox flex-shrink-0 mt-0.5"
-                              data-testid={`filter-size-clothing-${toTestId(size)}`}
-                            />
-                            <span className="flex-1 break-words min-w-0">{size}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {Object.entries(clothingSizeGroups)
+                  .filter(([, sizes]) => sizes.length > 0)
+                  .map(([group, sizes]) => (
+                    <div key={group} className="w-full min-w-0">
+                      <button
+                        onClick={() => toggleClothingGroup(group)}
+                        className="flex items-center justify-between w-full text-xs font-medium text-gray-400 hover:text-white mb-2 transition-colors min-w-0"
+                      >
+                        <span className="uppercase tracking-wide flex-1 text-left truncate">
+                          {clothingGroupLabels[group]}
+                        </span>
+                        <ToggleIcon open={!!expandedClothingGroups[group]} size={14} />
+                      </button>
+                      {expandedClothingGroups[group] && (
+                        <div className="grid grid-cols-2 gap-2 ml-2 w-full min-w-0">
+                          {sizes.map((size) => (
+                            <label
+                              key={size}
+                              className="flex items-start gap-2 text-xs text-gray-300 hover:text-white cursor-pointer min-w-0"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedClothingSizes.includes(size)}
+                                onChange={() => handleClothingSizeChange(size)}
+                                className="rdk-checkbox flex-shrink-0 mt-0.5"
+                                data-testid={`filter-size-clothing-${toTestId(size)}`}
+                              />
+                              <span className="flex-1 break-words min-w-0">{size}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
               </div>
             )}
           </div>
