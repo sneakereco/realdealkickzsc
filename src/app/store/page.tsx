@@ -227,7 +227,11 @@ export default async function StorePage({
         </div>
 
         <div className="lg:col-span-3">
-          <ProductGrid products={productsResult.products} storeHref={storeHref} />
+          <ProductGrid
+            products={productsResult.products}
+            storeHref={storeHref}
+            sizeFilters={filters}
+          />
         </div>
       </div>
 

@@ -54,7 +54,19 @@ function catalog(rows: ReturnType<typeof variant>[], failAfterFirstPage = false)
     const isVariants = url.pathname.endsWith("product_variants");
     const records = isVariants
       ? rows
-      : rows.map((v) => ({ ...v.product, variants: [v], images: [], tags: [] }));
+      : [
+          ...new Map(
+            rows.map((v) => [
+              v.product_id,
+              {
+                ...v.product,
+                variants: rows.filter((other) => other.product_id === v.product_id),
+                images: [],
+                tags: [],
+              },
+            ]),
+          ).values(),
+        ];
     const filtered = records.filter((row) => {
       for (const [key, expression] of params) {
         if (["select", "order", "limit", "offset"].includes(key)) continue;
@@ -79,6 +91,20 @@ function catalog(rows: ReturnType<typeof variant>[], failAfterFirstPage = false)
         }
       }
       return true;
+    });
+    const orders = (params.get("order") ?? "").split(",");
+    filtered.sort((a, b) => {
+      for (const order of orders) {
+        const [key, direction] = order.split(".");
+        const left = (a as Record<string, unknown>)[key];
+        const right = (b as Record<string, unknown>)[key];
+        const comparison =
+          typeof left === "number" && typeof right === "number"
+            ? left - right
+            : String(left).localeCompare(String(right));
+        if (comparison) return direction === "desc" ? -comparison : comparison;
+      }
+      return 0;
     });
     const data = filtered.slice(
       offset,
@@ -135,6 +161,39 @@ test("shoe matching normalizes spacing and token order without guessing conversi
   const result = await store.listProducts({ sizeShoe: ["9.5M / 11W"] });
   expect(result.products.map((p) => p.id)).toEqual(["a", "b"]);
 });
+
+test.each(["price_asc", "price_desc"] as const)(
+  "%s orders and paginates by matching variant prices",
+  async (sort) => {
+    const a = variant("a", "small");
+    a.sale_price_cents = sort === "price_asc" ? 22000 : 16000;
+    const unrelated = {
+      ...a,
+      id: "a-medium",
+      size_label: "medium",
+      sale_price_cents: sort === "price_asc" ? 1000 : 99000,
+    };
+    const b = variant("b", "S");
+    b.sale_price_cents = 18000;
+    const unavailable = {
+      ...a,
+      id: "a-sold",
+      stock: 0,
+      sale_price_cents: sort === "price_asc" ? 500 : 99900,
+    };
+    const { store } = catalog([a, unrelated, b, unavailable]);
+    const first = await store.listProducts({ sizeClothing: ["SMALL"], sort, limit: 1 });
+    const second = await store.listProducts({
+      sizeClothing: ["SMALL"],
+      sort,
+      limit: 1,
+      page: 2,
+    });
+    expect(first.total).toBe(2);
+    expect(first.products.map((p) => p.id)).toEqual(["b"]);
+    expect(second.products.map((p) => p.id)).toEqual(["a"]);
+  },
+);
 
 test("existing US selections still include explicitly mapped EU sizes", async () => {
   const result = await catalog([

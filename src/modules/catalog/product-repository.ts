@@ -1,8 +1,7 @@
 //  src/repositories/product-repo.ts
 import type { TypedSupabaseClient } from "@/lib/supabase/server";
 import { buildSearchTerms, rankSearchCandidates } from "@/lib/search/product-search";
-import { normalizeSizeLabel } from "@/lib/size-filters";
-import { expandShoeSizeSelection } from "@/config/constants/sizes";
+import { createSizeMatcher, normalizeSizeLabel } from "@/lib/size-filters";
 import type { Tables, TablesInsert, TablesUpdate } from "@/types/db/database.types";
 
 export interface ProductFilters {
@@ -110,8 +109,11 @@ type ProductWithRelations = ProductRow & {
 type VariantWithProduct = {
   product_id: string;
   sale_price_cents: number;
+  size_label: string;
+  stock: number;
   product?: {
     id: string;
+    size_type: string;
   };
 };
 
@@ -1483,6 +1485,7 @@ export class ProductRepository {
 
     const targetCount = offset + limit;
     const batchSize = Math.max(limit * 6, 120);
+    const matchesSize = createSizeMatcher(filters);
     const orderedIds: string[] = [];
     const seen = new Set<string>();
     let rangeStart = 0;
@@ -1490,7 +1493,9 @@ export class ProductRepository {
     while (orderedIds.length < targetCount) {
       let query = this.supabase
         .from("product_variants")
-        .select("product_id, sale_price_cents, product:products!inner(id)")
+        .select(
+          "product_id, sale_price_cents, size_label, stock, product:products!inner(id, size_type)",
+        )
         .order("sale_price_cents", { ascending: sort === "price_asc" })
         .order("product_id", { ascending: true })
         .range(rangeStart, rangeStart + batchSize - 1);
@@ -1554,6 +1559,13 @@ export class ProductRepository {
 
       for (const row of data ?? []) {
         const variantRow = row as VariantWithProduct;
+        if (
+          hasSizeFilters &&
+          (variantRow.stock <= 0 ||
+            !matchesSize(variantRow.product?.size_type ?? "", variantRow.size_label))
+        ) {
+          continue;
+        }
         const productId = variantRow.product_id;
         if (!productId || seen.has(productId)) {
           continue;
@@ -1585,14 +1597,9 @@ export class ProductRepository {
     }
 
     const productIds = new Set<string>();
+    const matchesSize = createSizeMatcher(filters);
 
     for (const group of selectedSizeGroups) {
-      const normalized = group.labels.map((label) =>
-        normalizeSizeLabel(group.sizeType, label),
-      );
-      const selected = new Set(
-        group.sizeType === "shoe" ? expandShoeSizeSelection(normalized) : normalized,
-      );
       let query = this.supabase
         .from("product_variants")
         .select("product_id, size_label, product:products!inner(size_type)")
@@ -1606,10 +1613,7 @@ export class ProductRepository {
       const data = await this.readAllPages(query.order("id"));
 
       for (const row of data ?? []) {
-        if (
-          row.product_id &&
-          selected.has(normalizeSizeLabel(group.sizeType, row.size_label))
-        ) {
+        if (row.product_id && matchesSize(group.sizeType, row.size_label)) {
           productIds.add(row.product_id);
         }
       }
