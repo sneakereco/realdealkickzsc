@@ -104,8 +104,10 @@ export async function generateMetadata({
 
 export default async function ProductDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ productId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { productId } = await params;
   const isUuid = z.uuid().safeParse(productId).success;
@@ -119,12 +121,26 @@ export default async function ProductDetailPage({
     notFound();
   }
 
+  const query = await searchParams;
+  const sizes = (key: string) => {
+    const value = query?.[key];
+    return (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
+  };
+  const sizeFilters = {
+    sizeShoe: sizes("sizeShoe"),
+    sizeClothing: sizes("sizeClothing"),
+  };
+
   return (
     <div>
       <div className="max-w-7xl mx-auto px-4 py-4">
         <BackToStoreLink />
       </div>
-      <ProductDetail product={product} />
+      <ProductDetail
+        key={`${productId}:${JSON.stringify(sizeFilters)}`}
+        product={product}
+        sizeFilters={sizeFilters}
+      />
     </div>
   );
 }

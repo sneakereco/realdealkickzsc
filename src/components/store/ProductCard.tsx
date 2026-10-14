@@ -5,36 +5,47 @@ import Link from "next/link";
 import Image from "next/image";
 
 import type { ProductWithDetails } from "@/types/domain/product";
+import { hasSizeFilters, type SizeFilters } from "@/lib/size-filters";
+import {
+  formatPrice,
+  formatPriceRange,
+  getMatchingAvailableVariants,
+} from "@/lib/store-pricing";
 
 interface ProductCardProps {
   product: ProductWithDetails;
   storeHref?: string;
   priority?: boolean; // For above-the-fold images
+  sizeFilters?: SizeFilters;
 }
 
-export function ProductCard({ product, storeHref, priority = false }: ProductCardProps) {
+export function ProductCard({
+  product,
+  storeHref,
+  priority = false,
+  sizeFilters = {},
+}: ProductCardProps) {
   const primaryImage = product.images.find((img) => img.is_primary) || product.images[0];
-  const variants = product.variants;
-
-  const priceMin = Math.min(...variants.map((v) => v.sale_price_cents));
-  const priceMax = Math.max(...variants.map((v) => v.sale_price_cents));
-  const isRange = priceMin !== priceMax;
-
-  const fullPriceDisplay =
-    priceMin === priceMax
-      ? `$${(priceMin / 100).toFixed(2)}`
-      : `$${(priceMin / 100).toFixed(2)} - $${(priceMax / 100).toFixed(2)}`;
-
-  const priceDisplay = isRange
-    ? `From $${(priceMin / 100).toFixed(2)}`
-    : fullPriceDisplay;
-
+  const variants = getMatchingAvailableVariants(product, sizeFilters);
+  if (!variants.length) return null;
+  const filtered = hasSizeFilters(sizeFilters);
+  const priceDisplay = formatPriceRange(variants);
+  const isRange = new Set(variants.map((v) => v.sale_price_cents)).size > 1;
+  const sizes = [...new Set(variants.map((v) => v.size_label))];
   const sizeDisplay =
-    variants.length === 1
-      ? variants[0].size_label === "N/A"
+    sizes.length === 1
+      ? sizes[0] === "N/A"
         ? "No size"
-        : variants[0].size_label
-      : "Multiple";
+        : `Size ${sizes[0]}${filtered ? " available" : ""}`
+      : filtered
+        ? sizes.length === 2
+          ? `Sizes ${sizes.join(", ")}`
+          : `${sizes.length} matching sizes`
+        : `${sizes.length} sizes available`;
+  const breakdown =
+    filtered && variants.length === 2 && sizes.length === 2 && isRange
+      ? variants.map((v) => `${v.size_label} · ${formatPrice(v.sale_price_cents)}`)
+      : [];
 
   const conditionBadge =
     product.condition === "new" ? (
@@ -47,14 +58,16 @@ export function ProductCard({ product, storeHref, priority = false }: ProductCar
       </span>
     ) : null;
 
-  const productHref = storeHref
-    ? `/store/${product.id}?from=${encodeURIComponent(storeHref)}`
-    : `/store/${product.id}`;
+  const params = new URLSearchParams();
+  if (storeHref) params.set("from", storeHref);
+  sizeFilters.sizeShoe?.forEach((size) => params.append("sizeShoe", size));
+  sizeFilters.sizeClothing?.forEach((size) => params.append("sizeClothing", size));
+  const productHref = `/store/${product.id}${params.size ? `?${params}` : ""}`;
 
   return (
     <Link
       href={productHref}
-      className="group block h-full"
+      className="group block h-full min-w-0"
       data-testid="product-card"
       data-product-id={product.id}
       // OPTIMIZATION 1: Add prefetch only for visible cards
@@ -94,21 +107,25 @@ export function ProductCard({ product, storeHref, priority = false }: ProductCar
           </div>
 
           {/* Size under title */}
-          <p
-            className="mt-1 text-gray-400 text-xs truncate"
-            title={`Size: ${sizeDisplay}`}
-          >
-            {sizeDisplay}
-          </p>
+          <p className="mt-1 text-gray-400 text-xs break-words">{sizeDisplay}</p>
 
           {/* Price at bottom, bigger */}
           <div className="mt-auto pt-3">
-            <span
-              className="text-white font-extrabold text-lg whitespace-nowrap tabular-nums"
-              title={fullPriceDisplay}
-            >
+            <span className="text-white font-extrabold text-base sm:text-lg tabular-nums break-words">
               {priceDisplay}
             </span>
+            {isRange && (
+              <p className="mt-1 text-gray-400 text-xs">
+                {filtered ? "Selected sizes" : "Price varies by size"}
+              </p>
+            )}
+            {breakdown.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-300">
+                {breakdown.map((line) => (
+                  <span key={line}>{line}</span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

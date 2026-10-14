@@ -11,20 +11,32 @@ import { useCart } from "@/components/cart/CartProvider";
 import { InstagramPurchaseNotice } from "@/components/purchase/InstagramPurchaseNotice";
 import { Toast } from "@/components/ui/Toast";
 import { RdkSelect, type RdkSelectOption } from "@/components/ui/Select";
+import { hasSizeFilters, type SizeFilters } from "@/lib/size-filters";
+import {
+  formatPrice,
+  formatPriceRange,
+  getMatchingAvailableVariants,
+} from "@/lib/store-pricing";
 
 interface ProductDetailProps {
   product: ProductWithDetails;
+  sizeFilters?: SizeFilters;
 }
 
-export function ProductDetail({ product }: ProductDetailProps) {
+export function ProductDetail({ product, sizeFilters = {} }: ProductDetailProps) {
   const { addItem, items } = useCart();
+  const filtered = hasSizeFilters(sizeFilters);
+  const matchingVariants = getMatchingAvailableVariants(product, sizeFilters);
+  const initialVariant = filtered
+    ? matchingVariants.length === 1
+      ? matchingVariants[0]
+      : undefined
+    : matchingVariants[0];
 
   const [selectedVariantId, setSelectedVariantId] = useState<string>(
-    product.variants[0]?.id ?? "",
+    initialVariant?.id ?? "",
   );
-  const selectedSizeLabelRef = useRef<string | null>(
-    product.variants[0]?.size_label ?? null,
-  );
+  const selectedSizeLabelRef = useRef<string | null>(initialVariant?.size_label ?? null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showShipping, setShowShipping] = useState(false);
   const [toast, setToast] = useState<{
@@ -32,8 +44,16 @@ export function ProductDetail({ product }: ProductDetailProps) {
     tone: "success" | "error" | "info";
   } | null>(null);
 
-  const selectedVariant =
-    product.variants.find((v) => v.id === selectedVariantId) ?? product.variants[0];
+  const selectedVariant = product.variants.find(
+    (v) => v.id === selectedVariantId && v.stock > 0,
+  );
+  const priceDisplay = selectedVariant
+    ? formatPrice(selectedVariant.sale_price_cents)
+    : matchingVariants.length
+      ? formatPriceRange(matchingVariants)
+      : filtered
+        ? "Selected sizes are unavailable"
+        : "Out of stock";
 
   const primaryImage = product.images.find((img) => img.is_primary) || product.images[0];
 
@@ -50,7 +70,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
     return product.variants.map((variant) => ({
       value: variant.id,
       label: `${variant.size_label} - $${(variant.sale_price_cents / 100).toFixed(2)} (${variant.stock} in stock)`,
-      disabled: variant.stock === 0,
+      disabled: variant.stock <= 0,
     }));
   }, [product.variants]);
 
@@ -68,7 +88,10 @@ export function ProductDetail({ product }: ProductDetailProps) {
   const displayTitle = product.name;
 
   useEffect(() => {
-    const current = product.variants.find((v) => v.id === selectedVariantId);
+    if (!selectedVariantId) return;
+    const current = product.variants.find(
+      (v) => v.id === selectedVariantId && v.stock > 0,
+    );
     if (current) {
       selectedSizeLabelRef.current = current.size_label;
       return;
@@ -76,12 +99,14 @@ export function ProductDetail({ product }: ProductDetailProps) {
 
     const fallbackLabel = selectedSizeLabelRef.current;
     const byLabel = fallbackLabel
-      ? product.variants.find((v) => v.size_label === fallbackLabel)
+      ? product.variants.find((v) => v.size_label === fallbackLabel && v.stock > 0)
       : undefined;
-    const next = byLabel ?? product.variants[0];
+    const next = byLabel;
     if (next && next.id !== selectedVariantId) {
       selectedSizeLabelRef.current = next.size_label;
       setSelectedVariantId(next.id);
+    } else if (!next) {
+      setSelectedVariantId("");
     }
   }, [product.variants, selectedVariantId]);
 
@@ -164,9 +189,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
           <h1 className="text-3xl font-bold text-white mb-2">{displayTitle}</h1>
 
           <div className="flex items-center gap-4 mb-6">
-            <span className="text-3xl font-bold text-white">
-              ${(((selectedVariant?.sale_price_cents ?? 0) as number) / 100).toFixed(2)}
-            </span>
+            <span className="text-3xl font-bold text-white">{priceDisplay}</span>
             <span
               className={`px-3 py-1 rounded text-sm font-semibold ${
                 product.condition === "new"
@@ -182,7 +205,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
           <div className="mb-6">
             <label className="block text-white font-semibold mb-2">Size</label>
 
-            {product.variants.length <= 1 ? (
+            {product.variants.length <= 1 && selectedVariant ? (
               <div className="w-full bg-zinc-900 text-white px-4 py-3 rounded border border-zinc-800/70">
                 {sizeDisplay || "No size"}
               </div>
@@ -191,9 +214,15 @@ export function ProductDetail({ product }: ProductDetailProps) {
                 value={selectedVariantId}
                 onChange={setSelectedVariantId}
                 options={sizeOptions}
+                placeholder="Choose a size"
                 className="w-full"
                 buttonClassName="px-4 py-3"
               />
+            )}
+            {filtered && matchingVariants.length > 0 && !selectedVariant && (
+              <p className="mt-2 text-sm text-gray-400">
+                {`Prices for your selected sizes: ${matchingVariants.map((v) => v.size_label).join(", ")}. Choose a size to continue.`}
+              </p>
             )}
           </div>
 
@@ -202,6 +231,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
             <p className="text-gray-400 text-sm">
               {selectedVariant && selectedVariant.stock > 0 ? (
                 <span className="text-green-400">{selectedVariant.stock} in stock</span>
+              ) : !selectedVariant && product.variants.some((v) => v.stock > 0) ? (
+                <span>Choose a size to check availability</span>
               ) : (
                 <span className="text-red-400">Out of stock</span>
               )}
@@ -215,8 +246,10 @@ export function ProductDetail({ product }: ProductDetailProps) {
             className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 rounded transition mb-6"
             type="button"
           >
-            {!selectedVariant || selectedVariant.stock === 0
-              ? "Out of Stock"
+            {!selectedVariant
+              ? product.variants.some((v) => v.stock > 0)
+                ? "Choose a size"
+                : "Out of Stock"
               : inCartQuantity > 0
                 ? canAddMore
                   ? `Add Another (${inCartQuantity} in cart)`

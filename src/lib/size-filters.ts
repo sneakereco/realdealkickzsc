@@ -1,4 +1,31 @@
-import { EU_SIZE_ALIASES } from "@/config/constants/sizes";
+import { EU_SIZE_ALIASES, expandShoeSizeSelection } from "@/config/constants/sizes";
+
+export interface SizeFilters {
+  sizeShoe?: readonly string[];
+  sizeClothing?: readonly string[];
+}
+
+export function hasSizeFilters(filters: SizeFilters) {
+  return Boolean(filters.sizeShoe?.length || filters.sizeClothing?.length);
+}
+
+// Share the existing alias rules across product matching, pricing, and sorting.
+export function createSizeMatcher(filters: SizeFilters) {
+  const shoe = new Set(
+    expandShoeSizeSelection(
+      (filters.sizeShoe ?? []).map((label) => normalizeSizeLabel("shoe", label)),
+    ),
+  );
+  const clothing = new Set(
+    (filters.sizeClothing ?? []).map((label) => normalizeSizeLabel("clothing", label)),
+  );
+  return (type: string, label: string) => {
+    if (!hasSizeFilters(filters)) return true;
+    if (type === "shoe") return shoe.has(normalizeSizeLabel(type, label));
+    if (type === "clothing") return clothing.has(normalizeSizeLabel(type, label));
+    return false;
+  };
+}
 
 type FilterSizeType = "shoe" | "clothing";
 
